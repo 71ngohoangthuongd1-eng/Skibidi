@@ -61,7 +61,7 @@ class RecoveryManager:
                         select(Payments).where(
                             Payments.status == "pending",
                             Payments.created_at < cutoff,
-                            Payments.provider == "cryptopay"
+                            Payments.provider.in_(["cryptopay", "usdt"])
                         )
                     )
                     pending_payments = result.scalars().all()
@@ -103,7 +103,7 @@ class RecoveryManager:
         p_currency = payment['currency'] if isinstance(payment, dict) else payment.currency
 
         try:
-            if p_provider == "cryptopay" and EnvKeys.CRYPTO_PAY_TOKEN:
+            if p_provider in {"cryptopay", "usdt"} and EnvKeys.CRYPTO_PAY_TOKEN:
                 crypto = CryptoPayAPI()
                 info = await crypto.get_invoice(p_external_id)
 

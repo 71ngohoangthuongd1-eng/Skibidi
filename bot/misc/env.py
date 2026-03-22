@@ -23,9 +23,10 @@ class EnvKeys(ABC):
     OWNER_ID: Final = int(_get_required('OWNER_ID'))
 
     # Database
-    POSTGRES_DB: Final = _get_required("POSTGRES_DB")
-    POSTGRES_USER: Final = _get_required("POSTGRES_USER")
-    POSTGRES_PASSWORD: Final = _get_required("POSTGRES_PASSWORD")
+    DATABASE_URL_OVERRIDE: Final = _get_optional("DATABASE_URL")
+    POSTGRES_DB: Final = _get_required("POSTGRES_DB") if not DATABASE_URL_OVERRIDE else _get_optional("POSTGRES_DB")
+    POSTGRES_USER: Final = _get_required("POSTGRES_USER") if not DATABASE_URL_OVERRIDE else _get_optional("POSTGRES_USER")
+    POSTGRES_PASSWORD: Final = _get_required("POSTGRES_PASSWORD") if not DATABASE_URL_OVERRIDE else _get_optional("POSTGRES_PASSWORD")
     DB_PORT: Final = int(_get_optional("DB_PORT", "5432"))
     DB_DRIVER: Final = _get_optional("DB_DRIVER", "postgresql+asyncpg")
     POSTGRES_HOST: Final = _get_optional("POSTGRES_HOST", "localhost")
@@ -46,6 +47,12 @@ class EnvKeys(ABC):
     PAYMENT_TIME: Final = int(_get_optional("PAYMENT_TIME", "1800"))
     MIN_AMOUNT: Final = int(_get_optional("MIN_AMOUNT", "20"))
     MAX_AMOUNT: Final = int(_get_optional("MAX_AMOUNT", "10000"))
+    VIETQR_BANK_BIN: Final = _get_optional("VIETQR_BANK_BIN", "")
+    VIETQR_BANK_NAME: Final = _get_optional("VIETQR_BANK_NAME", "")
+    VIETQR_ACCOUNT_NO: Final = _get_optional("VIETQR_ACCOUNT_NO", "")
+    VIETQR_ACCOUNT_NAME: Final = _get_optional("VIETQR_ACCOUNT_NAME", "")
+    VIETQR_TEMPLATE: Final = _get_optional("VIETQR_TEMPLATE", "compact2")
+    VIETQR_RATE: Final = _get_optional("VIETQR_RATE", "26000")
 
     # Links / UI
     CHANNEL_URL: Final = _get_optional("CHANNEL_URL", "")
@@ -54,7 +61,7 @@ class EnvKeys(ABC):
     RULES: Final = _get_optional("RULES", "")
 
     # Locale & logs
-    BOT_LOCALE: Final = _get_optional("BOT_LOCALE", "ru")
+    BOT_LOCALE: Final = _get_optional("BOT_LOCALE", "en")
     BOT_LOGFILE: Final = _get_optional("BOT_LOGFILE", "logs/bot.log")
     BOT_AUDITFILE: Final = _get_optional("BOT_AUDITFILE", "logs/audit.log")
     LOG_TO_STDOUT: Final = _get_optional("LOG_TO_STDOUT", "1")
@@ -79,4 +86,6 @@ class EnvKeys(ABC):
     AUDIT_RETENTION_DAYS: Final = int(_get_optional("AUDIT_RETENTION_DAYS", "90"))
     PAYMENTS_RETENTION_DAYS: Final = int(_get_optional("PAYMENTS_RETENTION_DAYS", "90"))
 
-    DATABASE_URL: Final = f"postgresql+asyncpg://{POSTGRES_USER}:{quote_plus(POSTGRES_PASSWORD)}@{POSTGRES_HOST}:{DB_PORT}/{POSTGRES_DB}"
+    DATABASE_URL: Final = DATABASE_URL_OVERRIDE or (
+        f"postgresql+asyncpg://{POSTGRES_USER}:{quote_plus(POSTGRES_PASSWORD)}@{POSTGRES_HOST}:{DB_PORT}/{POSTGRES_DB}"
+    )

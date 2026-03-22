@@ -1,4 +1,5 @@
 from aiogram import Router, F
+from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.enums.chat_type import ChatType
 from aiogram.fsm.context import FSMContext
@@ -18,9 +19,58 @@ from bot.keyboards.inline import simple_buttons, lazy_paginated_keyboard
 from bot.misc import EnvKeys
 from bot.misc.metrics import get_metrics
 from bot.i18n import localize
+from bot.i18n.main import set_active_locale
+from bot.i18n.store import set_user_locale
 from bot.logger_mesh import logger
 
 router = Router()
+
+
+async def _ensure_user_exists(user_id: int, referral_id: int | None = None) -> dict:
+    user = await check_user_cached(user_id)
+    if user:
+        return user
+
+    owner_max_role = await select_max_role_id()
+    user_role = owner_max_role if user_id == EnvKeys.OWNER_ID else 1
+
+    await create_user(
+        telegram_id=int(user_id),
+        registration_date=datetime.datetime.now(datetime.timezone.utc),
+        referral_id=referral_id,
+        role=user_role
+    )
+    return await check_user_cached(user_id)
+
+
+async def _build_main_menu_markup(user_id: int):
+    user = await _ensure_user_exists(user_id)
+    channel_username = _parse_channel_username()
+    role_id = user.get('role_id')
+    markup = main_menu(role=role_id, channel=channel_username, helper=EnvKeys.HELPER_ID)
+    return markup, channel_username
+
+
+async def _build_profile_view(user_id: int, tg_user):
+    await _ensure_user_exists(user_id)
+    user_info = await check_user_cached(user_id)
+
+    balance = user_info.get('balance')
+    operations = await select_user_operations(user_id)
+    overall_balance = sum(operations) if operations else 0
+    items = await select_user_items(user_id)
+    referral = EnvKeys.REFERRAL_PERCENT
+    cart_count = await get_cart_count(user_id)
+
+    markup = profile_keyboard(referral, items, cart_count=cart_count)
+    text = (
+        f"{localize('profile.caption', name=tg_user.first_name, id=user_id)}\n"
+        f"{localize('profile.id', id=user_id)}\n"
+        f"{localize('profile.balance', amount=balance, currency=EnvKeys.PAY_CURRENCY)}\n"
+        f"{localize('profile.total_topup', amount=overall_balance, currency=EnvKeys.PAY_CURRENCY)}\n"
+        f"{localize('profile.purchased_count', count=items)}"
+    )
+    return text, markup
 
 
 @router.message(F.text.startswith('/start'))
@@ -79,27 +129,86 @@ async def start(message: Message, state: FSMContext):
     await state.clear()
 
 
+@router.message(Command("menu"))
+async def menu_command_handler(message: Message, state: FSMContext):
+    if message.chat.type != ChatType.PRIVATE:
+        return
+
+    await state.clear()
+    markup, _ = await _build_main_menu_markup(message.from_user.id)
+    await message.answer(localize("menu.title"), reply_markup=markup)
+    await message.delete()
+
+
+@router.message(Command("profile"))
+async def profile_command_handler(message: Message, state: FSMContext):
+    if message.chat.type != ChatType.PRIVATE:
+        return
+
+    await state.clear()
+    text, markup = await _build_profile_view(message.from_user.id, message.from_user)
+    await message.answer(text, reply_markup=markup, parse_mode='HTML')
+    await message.delete()
+
+
+@router.message(Command("rules"))
+async def rules_command_handler(message: Message, state: FSMContext):
+    if message.chat.type != ChatType.PRIVATE:
+        return
+
+    await state.clear()
+    if EnvKeys.RULES:
+        await message.answer(EnvKeys.RULES, reply_markup=back("back_to_menu"))
+    else:
+        await message.answer(localize("rules.not_set"))
+    await message.delete()
+
+
+@router.message(Command("help"))
+async def help_command_handler(message: Message, state: FSMContext):
+    if message.chat.type != ChatType.PRIVATE:
+        return
+
+    await state.clear()
+    await message.answer(localize("help.text"), reply_markup=back("back_to_menu"))
+    await message.delete()
+
+
+@router.callback_query(F.data == "language_menu")
+async def language_menu_handler(call: CallbackQuery, state: FSMContext):
+    buttons = [
+        ("🇻🇳 Tiếng Việt", "lang_set:vi"),
+        ("🇺🇸 English", "lang_set:en"),
+        (localize("btn.back"), "back_to_menu"),
+    ]
+    await call.message.edit_text(
+        localize("language.title"),
+        reply_markup=simple_buttons(buttons, per_row=1),
+    )
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("lang_set:"))
+async def language_set_handler(call: CallbackQuery, state: FSMContext):
+    locale = call.data.split(":", 1)[1]
+    locale = set_user_locale(call.from_user.id, locale)
+    set_active_locale(locale)
+
+    markup, _ = await _build_main_menu_markup(call.from_user.id)
+    await call.message.edit_text(
+        localize("language.changed", locale=localize(f"language.name.{locale}")),
+        reply_markup=markup,
+    )
+    await state.clear()
+
+
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu_callback_handler(call: CallbackQuery, state: FSMContext):
     """
     Return user to the main menu.
     """
     user_id = call.from_user.id
-    user = await check_user_cached(user_id)
-    if not user:
-        await create_user(
-            telegram_id=user_id,
-            registration_date=datetime.datetime.now(datetime.timezone.utc),
-            referral_id=None,
-            role=1
-        )
-        user = await check_user_cached(user_id)
-
-    role_id = user.get('role_id')
-
-    channel_username = _parse_channel_username()
-
-    markup = main_menu(role=role_id, channel=channel_username, helper=EnvKeys.HELPER_ID)
+    markup, _ = await _build_main_menu_markup(user_id)
     await call.message.edit_text(localize("menu.title"), reply_markup=markup)
     await state.clear()
 
@@ -123,24 +232,7 @@ async def profile_callback_handler(call: CallbackQuery, state: FSMContext):
     Send profile info (balance, purchases count, id, etc.).
     """
     user_id = call.from_user.id
-    tg_user = call.from_user
-    user_info = await check_user_cached(user_id)
-
-    balance = user_info.get('balance')
-    operations = await select_user_operations(user_id)
-    overall_balance = sum(operations) if operations else 0
-    items = await select_user_items(user_id)
-    referral = EnvKeys.REFERRAL_PERCENT
-    cart_count = await get_cart_count(user_id)
-
-    markup = profile_keyboard(referral, items, cart_count=cart_count)
-    text = (
-        f"{localize('profile.caption', name=tg_user.first_name, id=user_id)}\n"
-        f"{localize('profile.id', id=user_id)}\n"
-        f"{localize('profile.balance', amount=balance, currency=EnvKeys.PAY_CURRENCY)}\n"
-        f"{localize('profile.total_topup', amount=overall_balance, currency=EnvKeys.PAY_CURRENCY)}\n"
-        f"{localize('profile.purchased_count', count=items)}"
-    )
+    text, markup = await _build_profile_view(user_id, call.from_user)
     try:
         await call.message.edit_text(text, reply_markup=markup, parse_mode='HTML')
     except TelegramBadRequest as e:

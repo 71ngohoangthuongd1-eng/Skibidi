@@ -18,28 +18,29 @@ from bot.states import RoleMgmtFSM
 
 router = Router()
 
-PERM_LABELS = {
-    Permission.USE: "USE",
-    Permission.BROADCAST: "BROADCAST",
-    Permission.SETTINGS_MANAGE: "SETTINGS",
-    Permission.USERS_MANAGE: "USERS",
-    Permission.CATALOG_MANAGE: "CATALOG",
-    Permission.ADMINS_MANAGE: "ADMINS",
-    Permission.OWN: "OWNER",
-    Permission.STATS_VIEW: "STATS",
-    Permission.BALANCE_MANAGE: "BALANCE",
-    Permission.PROMO_MANAGE: "PROMOS",
-}
+def _get_perm_labels():
+    return {
+        Permission.USE: localize("admin.shop.stats.perm.use"),
+        Permission.BROADCAST: localize("admin.shop.stats.perm.broadcast"),
+        Permission.SETTINGS_MANAGE: localize("admin.shop.stats.perm.settings"),
+        Permission.USERS_MANAGE: localize("admin.shop.stats.perm.users"),
+        Permission.CATALOG_MANAGE: localize("admin.shop.stats.perm.catalog"),
+        Permission.ADMINS_MANAGE: localize("admin.shop.stats.perm.admins"),
+        Permission.OWN: localize("admin.shop.stats.perm.owner"),
+        Permission.STATS_VIEW: localize("admin.shop.stats.perm.stats"),
+        Permission.BALANCE_MANAGE: localize("admin.shop.stats.perm.balance"),
+        Permission.PROMO_MANAGE: localize("admin.shop.stats.perm.promos"),
+    }
 
 
 def _format_permissions(perms: int) -> str:
-    active = [label for bit, label in PERM_LABELS.items() if perms & bit]
+    active = [label for bit, label in _get_perm_labels().items() if perms & bit]
     return ", ".join(active) if active else "—"
 
 
 def _build_perms_keyboard(current_perms: int, caller_perms: int) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    for bit, label in PERM_LABELS.items():
+    for bit, label in _get_perm_labels().items():
         if (bit & caller_perms) != bit:
             continue
         checked = "✓" if (current_perms & bit) else "  "

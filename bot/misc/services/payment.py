@@ -1,7 +1,9 @@
 import aiohttp
 import json
 import math
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
+from urllib.parse import urlencode
 
 from aiogram import Bot
 from aiogram.types import LabeledPrice
@@ -11,6 +13,7 @@ from bot.i18n import localize
 
 # Currencies without minor units (no cents)
 ZERO_DEC_CURRENCIES = {"JPY", "KRW"}
+CRYPTO_ASSETS = {"USDT", "TON", "BTC", "ETH", "LTC", "BNB", "TRX", "USDC"}
 
 
 def currency_to_stars(amount_rub: int) -> int:
@@ -19,6 +22,45 @@ def currency_to_stars(amount_rub: int) -> int:
     round up (ceil) to avoid undercharging.
     """
     return int(math.ceil(float(amount_rub) * EnvKeys.STARS_PER_VALUE))
+
+
+def is_vietqr_configured() -> bool:
+    """Return True when VietQR bank transfer is minimally configured."""
+    return bool(EnvKeys.VIETQR_BANK_BIN and EnvKeys.VIETQR_ACCOUNT_NO)
+
+
+def convert_balance_amount_to_vnd(amount) -> int:
+    """
+    Convert internal balance units to integer VND using configured rate.
+    If balance currency is already VND, keep the amount as-is.
+    """
+    amount_dec = Decimal(str(amount))
+    if (EnvKeys.PAY_CURRENCY or "").upper() == "VND":
+        return int(amount_dec.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    rate = Decimal(str(EnvKeys.VIETQR_RATE or "0"))
+    if rate <= 0:
+        raise ValueError("VIETQR_RATE must be positive")
+
+    return int((amount_dec * rate).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def build_vietqr_url(*, amount_vnd: int, transfer_content: str) -> str:
+    """Build a VietQR image URL for the configured bank account."""
+    if not is_vietqr_configured():
+        raise RuntimeError("VietQR is not configured")
+
+    template = EnvKeys.VIETQR_TEMPLATE or "compact2"
+    base = f"https://img.vietqr.io/image/{EnvKeys.VIETQR_BANK_BIN}-{EnvKeys.VIETQR_ACCOUNT_NO}-{template}.png"
+    params_dict = {
+        "amount": int(amount_vnd),
+        "addInfo": transfer_content,
+    }
+    if EnvKeys.VIETQR_ACCOUNT_NAME:
+        params_dict["accountName"] = EnvKeys.VIETQR_ACCOUNT_NAME
+
+    params = urlencode(params_dict)
+    return f"{base}?{params}"
 
 
 async def send_stars_invoice(
@@ -218,20 +260,32 @@ class CryptoPayAPI:
             expires_in: int,
             currency: str = getattr(EnvKeys, "PAY_CURRENCY", None) or "RUB",
             accepted_assets: str = "TON,USDT",
+            asset: Optional[str] = None,
             payload: Optional[str] = None,
             description: Optional[str] = None,
             hidden_message: Optional[str] = None,
     ) -> dict:
         """
-        Create a Crypto Pay invoice for given fiat amount/currency.
+        Create a Crypto Pay invoice for either fiat or crypto amount.
         """
-        params = {
-            "currency_type": "fiat",
-            "fiat": currency,
-            "amount": str(amount),
-            "accepted_assets": accepted_assets,
-            "expires_in": expires_in,
-        }
+        asset_code = (asset or "").upper()
+        currency_code = (currency or "").upper()
+
+        if asset_code or currency_code in CRYPTO_ASSETS:
+            params = {
+                "currency_type": "crypto",
+                "asset": asset_code or currency_code,
+                "amount": str(amount),
+                "expires_in": expires_in,
+            }
+        else:
+            params = {
+                "currency_type": "fiat",
+                "fiat": currency_code,
+                "amount": str(amount),
+                "accepted_assets": accepted_assets,
+                "expires_in": expires_in,
+            }
         if payload:
             params["payload"] = payload
         if description:

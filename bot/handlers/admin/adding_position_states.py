@@ -5,9 +5,7 @@ from aiogram.exceptions import TelegramForbiddenError, TelegramNotFound, Telegra
 from aiogram.types import CallbackQuery, Message
 
 from bot.database.models import Permission
-from bot.database.methods import (
-    check_category_cached, get_item_info_cached, create_item, add_values_to_item
-)
+from bot.database.methods import get_item_info_cached, create_item, add_values_to_item
 from bot.handlers.other import _parse_channel_username
 from bot.keyboards.inline import back, question_buttons, simple_buttons
 from bot.database.methods.audit import log_audit
@@ -17,6 +15,11 @@ from bot.i18n import localize
 from bot.states import AddItemFSM
 
 router = Router()
+
+
+def _extract_item_values(raw_text: str | None) -> list[str]:
+    """Split multiline admin input into one stock value per non-empty line."""
+    return [line.strip() for line in (raw_text or "").splitlines() if line.strip()]
 
 
 @router.callback_query(F.data == 'add_item', HasPermissionFilter(permission=Permission.CATALOG_MANAGE))
@@ -61,7 +64,7 @@ async def add_item_description(message: Message, state):
 @router.message(AddItemFSM.waiting_item_price, F.text)
 async def add_item_price(message: Message, state):
     """
-    Validate price and ask for category.
+    Validate price and ask about infinity mode.
     """
     price_text = (message.text or "").strip()
     if not price_text.isdigit():
@@ -69,25 +72,6 @@ async def add_item_price(message: Message, state):
         return
 
     await state.update_data(item_price=int(price_text))
-    await message.answer(localize('admin.goods.add.prompt.category'), reply_markup=back('goods_management'))
-    await state.set_state(AddItemFSM.waiting_category)
-
-
-@router.message(AddItemFSM.waiting_category, F.text)
-async def check_category_for_add_item(message: Message, state):
-    """
-    Category must exist; then ask about infinite mode.
-    """
-    category_name = (message.text or "").strip()
-    category = await check_category_cached(category_name)
-    if not category:
-        await message.answer(
-            localize('admin.goods.add.category.not_found'),
-            reply_markup=back('goods_management')
-        )
-        return
-
-    await state.update_data(item_category=category_name)
     await message.answer(
         localize('admin.goods.add.infinity.question'),
         reply_markup=question_buttons('infinity', 'goods_management')
@@ -126,13 +110,17 @@ async def collect_item_value(message: Message, state):
     """
     data = await state.get_data()
     values = data.get('item_values', [])
-    value = (message.text or "")
-    values.append(value)
+    new_values = _extract_item_values(message.text)
+    if not new_values:
+        await message.answer(localize('admin.goods.add.single.empty'), reply_markup=back('goods_management'))
+        return
+
+    values.extend(new_values)
     await state.update_data(item_values=values)
 
     # Show progress + “Finish adding” button
     await message.answer(
-        localize('admin.goods.add.values.added', value=value, count=len(values)),
+        localize('admin.goods.add.values.added_batch', added_now=len(new_values), count=len(values)),
         reply_markup=simple_buttons([
             (localize('btn.add_values_finish'), "finish_adding_items"),
             (localize('btn.back'), "goods_management")
@@ -149,7 +137,6 @@ async def finish_adding_items_callback_handler(call: CallbackQuery, state):
     item_name = data.get('item_name')
     item_description = data.get('item_description')
     item_price = data.get('item_price')
-    category_name = data.get('item_category')
     raw_values: list[str] = data.get("item_values", []) or []
 
     added = 0
@@ -159,7 +146,7 @@ async def finish_adding_items_callback_handler(call: CallbackQuery, state):
     seen_in_batch: set[str] = set()
 
     # Create position
-    await create_item(item_name, item_description, item_price, category_name)
+    await create_item(item_name, item_description, item_price)
 
     for v in raw_values:
         v_norm = (v or "").strip()
@@ -228,7 +215,6 @@ async def finish_adding_item_callback_handler(message: Message, state):
     item_name = data.get('item_name')
     item_description = data.get('item_description')
     item_price = data.get('item_price')
-    category_name = data.get('item_category')
 
     single_value = (message.text or "").strip()
     if not single_value:
@@ -236,7 +222,7 @@ async def finish_adding_item_callback_handler(message: Message, state):
         return
 
     # 1) Create position
-    await create_item(item_name, item_description, item_price, category_name)
+    await create_item(item_name, item_description, item_price)
     # 2) Add 1 “infinite” value
     await add_values_to_item(item_name, single_value, True)
 

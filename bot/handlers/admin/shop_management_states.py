@@ -88,7 +88,10 @@ async def logs_callback_handler(call: CallbackQuery):
     if files_to_send:
         for log_type, file_path in files_to_send:
             doc = FSInputFile(file_path, filename=file_path.name)
-            caption = localize("admin.shop.logs.caption") if log_type == 'audit' else f"{log_type.title()} log file"
+            caption = localize("admin.shop.logs.caption") if log_type == 'audit' else localize(
+                "admin.shop.logs.file_label",
+                name=log_type.title(),
+            )
             await call.message.bot.send_document(
                 chat_id=call.message.chat.id,
                 document=doc,
@@ -163,25 +166,26 @@ async def statistics_callback_handler(call: CallbackQuery):
     if roles:
         text += "\n" + localize("admin.shop.stats.roles_header")
         for r in roles:
-            perms_list = [label for bit, label in _PERM_LABELS.items() if r['permissions'] & bit]
+            perms_list = [label for bit, label in _get_perm_labels().items() if r['permissions'] & bit]
             perms_str = ", ".join(perms_list) if perms_list else "—"
             text += f"\n◾<b>{r['name']}</b> ({perms_str}): {r['user_count']}"
 
     await call.message.edit_text(text, reply_markup=back("shop_management"), parse_mode="HTML")
 
 
-_PERM_LABELS = {
-    Permission.USE: "USE",
-    Permission.BROADCAST: "BROADCAST",
-    Permission.SETTINGS_MANAGE: "SETTINGS",
-    Permission.USERS_MANAGE: "USERS",
-    Permission.CATALOG_MANAGE: "CATALOG",
-    Permission.ADMINS_MANAGE: "ADMINS",
-    Permission.OWN: "OWNER",
-    Permission.STATS_VIEW: "STATS",
-    Permission.BALANCE_MANAGE: "BALANCE",
-    Permission.PROMO_MANAGE: "PROMOS",
-}
+def _get_perm_labels():
+    return {
+        Permission.USE: localize("admin.shop.stats.perm.use"),
+        Permission.BROADCAST: localize("admin.shop.stats.perm.broadcast"),
+        Permission.SETTINGS_MANAGE: localize("admin.shop.stats.perm.settings"),
+        Permission.USERS_MANAGE: localize("admin.shop.stats.perm.users"),
+        Permission.CATALOG_MANAGE: localize("admin.shop.stats.perm.catalog"),
+        Permission.ADMINS_MANAGE: localize("admin.shop.stats.perm.admins"),
+        Permission.OWN: localize("admin.shop.stats.perm.owner"),
+        Permission.STATS_VIEW: localize("admin.shop.stats.perm.stats"),
+        Permission.BALANCE_MANAGE: localize("admin.shop.stats.perm.balance"),
+        Permission.PROMO_MANAGE: localize("admin.shop.stats.perm.promos"),
+    }
 
 
 @router.callback_query(F.data == "users_list", HasPermissionFilter(Permission.USERS_MANAGE))

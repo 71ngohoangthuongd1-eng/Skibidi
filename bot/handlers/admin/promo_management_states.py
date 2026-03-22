@@ -98,10 +98,15 @@ async def _show_promo_view(message, promo_id: int):
         if not promo:
             return
 
+        discount_type_key = f"admin.promo.type.{promo.discount_type}"
+        discount_type = localize(discount_type_key)
+        if discount_type == discount_type_key:
+            discount_type = promo.discount_type
+
         text = localize(
             "admin.promo.detail",
             code=promo.code,
-            discount_type=promo.discount_type,
+            discount_type=discount_type,
             discount_value=promo.discount_value,
             current_uses=promo.current_uses,
             max_uses=promo.max_uses or "∞",
@@ -109,10 +114,10 @@ async def _show_promo_view(message, promo_id: int):
             is_active="✅" if promo.is_active else "⛔",
         )
 
-    toggle_text = "⛔ Деактивировать" if promo.is_active else "✅ Активировать"
+    toggle_text = localize("admin.promo.action.deactivate") if promo.is_active else localize("admin.promo.action.activate")
     buttons = [
         (toggle_text, f"promo_toggle_{promo_id}"),
-        ("🗑 Удалить", f"promo_d_{promo_id}"),
+        (localize("admin.promo.action.delete"), f"promo_d_{promo_id}"),
         (localize("btn.back"), "promo_mgmt"),
     ]
     await message.edit_text(text, reply_markup=simple_buttons(buttons))

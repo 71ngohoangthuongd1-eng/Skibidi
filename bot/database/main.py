@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.engine import make_url
 
 from bot.database.dsn import dsn
 from bot.misc import SingletonMeta
@@ -12,26 +13,39 @@ class Database(metaclass=SingletonMeta):
     BASE = declarative_base()
 
     def __init__(self):
-        self.__engine: AsyncEngine = create_async_engine(
-            dsn(),
-            echo=False,
-            pool_pre_ping=True,
+        database_url = dsn()
+        url = make_url(database_url)
+        engine_kwargs = {
+            "echo": False,
+            "pool_pre_ping": True,
+        }
 
-            pool_size=20,
-            max_overflow=40,
-            pool_timeout=30,
-            pool_recycle=3600,
-
-            connect_args={
-                "timeout": 10,
-                "command_timeout": 30,
-                "server_settings": {
-                    "lc_messages": "C",
+        if url.get_backend_name() == "sqlite":
+            engine_kwargs["connect_args"] = {"check_same_thread": False}
+        else:
+            engine_kwargs.update(
+                pool_size=20,
+                max_overflow=40,
+                pool_timeout=30,
+                pool_recycle=3600,
+                connect_args={
+                    "timeout": 10,
+                    "command_timeout": 30,
+                    "server_settings": {
+                        "lc_messages": "C",
+                    },
                 },
-            },
+            )
+
+        self.__engine: AsyncEngine = create_async_engine(
+            database_url,
+            **engine_kwargs,
         )
 
-        logging.info(f"Database pool initialized: size={20}, max_overflow={40}")
+        if url.get_backend_name() == "sqlite":
+            logging.info("SQLite database initialized")
+        else:
+            logging.info(f"Database pool initialized: size={20}, max_overflow={40}")
 
         self.__SessionLocal = async_sessionmaker(
             bind=self.__engine,

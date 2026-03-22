@@ -30,7 +30,7 @@ async def update_balance(telegram_id: int, summ: int) -> None:
     safe_create_task(invalidate_stats_cache())
 
 
-async def update_item(item_name: str, new_name: str, description: str, price, category: str) -> tuple[bool, str | None]:
+async def update_item(item_name: str, new_name: str, description: str, price, category: str | int | None = None) -> tuple[bool, str | None]:
     """
     Update a Goods record with proper locking. Now uses integer PKs.
     """
@@ -44,11 +44,16 @@ async def update_item(item_name: str, new_name: str, description: str, price, ca
             if not goods:
                 return False, localize("admin.goods.update.position.invalid")
 
-            cat_id = (await s.execute(
-                select(Categories.id).where(Categories.name == category)
-            )).scalar()
-            if not cat_id:
-                return False, localize("admin.goods.update.position.invalid")
+            if category is None:
+                cat_id = goods.category_id
+            elif isinstance(category, int):
+                cat_id = category
+            else:
+                cat_id = (await s.execute(
+                    select(Categories.id).where(Categories.name == category)
+                )).scalar()
+                if not cat_id:
+                    return False, localize("admin.goods.update.position.invalid")
 
             if new_name == item_name:
                 goods.description = description

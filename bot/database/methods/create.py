@@ -9,6 +9,17 @@ from bot.database import Database
 from bot.database.methods.cache_utils import safe_create_task
 from bot.database.methods.read import invalidate_stats_cache
 
+DEFAULT_CATEGORY_NAME = "General"
+
+
+async def ensure_default_category() -> str:
+    """Ensure the hidden default category exists and return its name."""
+    async with Database().session() as s:
+        cat = (await s.execute(select(Categories).where(Categories.name == DEFAULT_CATEGORY_NAME))).scalars().first()
+        if not cat:
+            s.add(Categories(name=DEFAULT_CATEGORY_NAME))
+    return DEFAULT_CATEGORY_NAME
+
 
 async def create_user(telegram_id: int, registration_date: datetime, referral_id: int | None, role: int = 1) -> None:
     """Create user if missing; commit."""
@@ -26,8 +37,9 @@ async def create_user(telegram_id: int, registration_date: datetime, referral_id
         )
 
 
-async def create_item(item_name: str, item_description: str, item_price: int, category_name: str) -> None:
+async def create_item(item_name: str, item_description: str, item_price: int, category_name: str | None = None) -> None:
     """Insert item (goods); commit. Resolves category_name to category_id."""
+    category_name = category_name or await ensure_default_category()
     async with Database().session() as s:
         result = await s.execute(select(exists().where(Goods.name == item_name)))
         if result.scalar():
@@ -95,17 +107,20 @@ async def create_operation(user_id: int, value: int, operation_time: datetime) -
         s.add(Operations(user_id, value, operation_time))
 
 
-async def create_pending_payment(provider: str, external_id: str, user_id: int, amount: int, currency: str) -> None:
-    """Create pending payment."""
+async def create_pending_payment(provider: str, external_id: str, user_id: int, amount, currency: str) -> int:
+    """Create pending payment and return its ID."""
     async with Database().session() as s:
-        s.add(Payments(
+        payment = Payments(
             provider=provider,
             external_id=external_id,
             user_id=user_id,
-            amount=Decimal(amount),
+            amount=Decimal(str(amount)),
             currency=currency,
             status="pending"
-        ))
+        )
+        s.add(payment)
+        await s.flush()
+        return payment.id
 
 
 async def create_referral_earning(referrer_id: int, referral_id: int, amount: int, original_amount: int) -> None:

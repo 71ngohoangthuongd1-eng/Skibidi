@@ -1,4 +1,6 @@
-DEFAULT_LOCALE = "ru"
+from bot.i18n.overrides import EN_TRANSLATIONS, VI_TRANSLATIONS
+
+DEFAULT_LOCALE = "en"
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "ru": {
@@ -19,6 +21,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "btn.check_subscription": "🔄 Проверить подписку",
         "btn.pay": "💳 Оплатить",
         "btn.check_payment": "🔄 Проверить оплату",
+        "btn.pay.usdt": "💵 USDT",
         "btn.pay.crypto": "💎 CryptoPay",
         "btn.pay.stars": "⭐ Telegram Stars",
         "btn.pay.tg": "💸 Telegram Payments",
@@ -36,6 +39,24 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "menu.title": "⛩️ Основное меню",
         "profile.caption": "👤 <b>Профиль</b> — <a href='tg://user?id={id}'>{name}</a>",
         "rules.not_set": "❌ Правила не были добавлены",
+        "btn.language": "🌐 Язык",
+        "language.title": "🌐 Выберите язык",
+        "language.changed": "✅ Язык переключен: {locale}",
+        "language.name.vi": "Tiếng Việt",
+        "language.name.en": "English",
+        "commands.start": "Запустить бота",
+        "commands.menu": "Открыть главное меню",
+        "commands.profile": "Открыть профиль",
+        "commands.rules": "Показать правила",
+        "commands.help": "Показать помощь",
+        "help.text": (
+            "📘 <b>Основные команды</b>\n\n"
+            "/start — запуск бота\n"
+            "/menu — открыть главное меню\n"
+            "/profile — открыть профиль\n"
+            "/rules — показать правила\n"
+            "/help — показать эту справку"
+        ),
 
         # === Subscription Flow ===
         "subscribe.prompt": "Для начала подпишитесь на новостной канал",
@@ -188,10 +209,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "admin.goods.add.category.not_found": "❌ Позиция не может быть создана (категория для привязки введена неверно)",
         "admin.goods.add.infinity.question": "У этой позиции будут бесконечные товары? (всем будет высылаться одна копия значения)",
         "admin.goods.add.values.prompt_multi": (
-            "Введите товары для позиции по одному сообщению.\n"
+            "Отправляйте товары для позиции: каждая непустая строка считается отдельным товаром.\n"
+            "Можно отправить сразу несколько строк в одном сообщении.\n"
             "Когда закончите ввод — нажмите «Добавить указанные товары»."
         ),
         "admin.goods.add.values.added": "✅ Товар «{value}» добавлен в список ({count} шт.)",
+        "admin.goods.add.values.added_batch": "✅ Добавлено строк: {added_now}. Всего в списке: {count}.",
         "admin.goods.add.result.created": "✅ Позиция создана.",
         "admin.goods.add.result.added": "📦 Добавлено товаров: <b>{n}</b>",
         "admin.goods.add.result.skipped_db_dup": "↩️ Пропущено (уже были в БД): <b>{n}</b>",
@@ -505,6 +528,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "btn.check_subscription": "🔄 Check subscription",
         "btn.check_payment": "🔄 Check payment",
         "btn.pay": "💳 Pay",
+        "btn.pay.usdt": "💵 USDT",
         "btn.pay.crypto": "💎 CryptoPay",
         "btn.pay.stars": "⭐ Telegram Stars",
         "btn.pay.tg": "💸 Telegram Payments",
@@ -522,6 +546,24 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "menu.title": "⛩️ Main menu",
         "profile.caption": "👤 <b>Profile</b> — <a href='tg://user?id={id}'>{name}</a>",
         "rules.not_set": "❌ Rules have not been added",
+        "btn.language": "🌐 Language",
+        "language.title": "🌐 Choose a language",
+        "language.changed": "✅ Language changed: {locale}",
+        "language.name.vi": "Tiếng Việt",
+        "language.name.en": "English",
+        "commands.start": "Start the bot",
+        "commands.menu": "Open the main menu",
+        "commands.profile": "Open your profile",
+        "commands.rules": "Show the rules",
+        "commands.help": "Show help",
+        "help.text": (
+            "📘 <b>Main Commands</b>\n\n"
+            "/start — start the bot\n"
+            "/menu — open the main menu\n"
+            "/profile — open your profile\n"
+            "/rules — show the rules\n"
+            "/help — show this help"
+        ),
 
         # === Profile ===
         "btn.replenish": "💳 Top up your balance",
@@ -674,10 +716,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "admin.goods.add.category.not_found": "❌ Item cannot be created (invalid category provided)",
         "admin.goods.add.infinity.question": "Should this item have infinite values? (everyone will receive the same value copy)",
         "admin.goods.add.values.prompt_multi": (
-            "Send product values one per message.\n"
+            "Send product values so that each non-empty line becomes one stock item.\n"
+            "You can paste multiple lines in a single message.\n"
             "When finished, press “Add the listed goods”."
         ),
         "admin.goods.add.values.added": "✅ Value “{value}” added to the list ({count} pcs).",
+        "admin.goods.add.values.added_batch": "✅ Added {added_now} line(s). Total in the list: {count}.",
         "admin.goods.add.result.created": "✅ Item has been created.",
         "admin.goods.add.result.added": "📦 Added values: <b>{n}</b>",
         "admin.goods.add.result.skipped_db_dup": "↩️ Skipped (already in DB): <b>{n}</b>",
@@ -974,3 +1018,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "errors.general_error": "❌ Error: {e}",
     },
 }
+
+TRANSLATIONS["en"] = {**TRANSLATIONS["en"], **EN_TRANSLATIONS}
+TRANSLATIONS["vi"] = {**TRANSLATIONS["en"], **VI_TRANSLATIONS}

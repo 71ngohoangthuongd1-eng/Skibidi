@@ -139,7 +139,13 @@ dmypy.json
 cython_debug/
 
 .idea
-.vscode
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
 .ruff_cache
 
 data
+*.db
+*.db-journal

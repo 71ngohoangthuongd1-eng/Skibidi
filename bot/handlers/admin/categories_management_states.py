@@ -16,17 +16,11 @@ router = Router()
 @router.callback_query(F.data == 'categories_management', HasPermissionFilter(permission=Permission.CATALOG_MANAGE))
 async def categories_callback_handler(call: CallbackQuery):
     """
-    Opens the categories management submenu.
+    Categories are hidden from the admin UI; redirect to goods management.
     """
-    actions = [
-        (localize("admin.categories.add"), "add_category"),
-        (localize("admin.categories.rename"), "update_category"),
-        (localize("admin.categories.delete"), "delete_category"),
-        (localize("btn.back"), "console"),
-    ]
     await call.message.edit_text(
-        localize("admin.categories.menu.title"),
-        reply_markup=simple_buttons(actions, per_row=1),
+        localize("admin.goods.menu.title"),
+        reply_markup=back("goods_management"),
     )
 
 

@@ -8,6 +8,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
 
+from bot.commands import setup_bot_commands
 from bot.database.methods import check_category_cached
 from bot.handlers.admin.shop_management_states import init_stats_cache
 from bot.misc import EnvKeys
@@ -16,6 +17,7 @@ from bot.database.models import register_models
 from bot.logger_mesh import configure_logging
 from bot.middleware import setup_rate_limiting, RateLimitConfig
 from bot.middleware.security import SecurityMiddleware, AuthenticationMiddleware
+from bot.middleware.locale import LocaleMiddleware
 from bot.misc.caching import init_cache_manager, get_cache_manager
 from bot.misc.caching import CacheScheduler
 from bot.misc.caching import get_redis_storage
@@ -80,6 +82,11 @@ async def __on_start_up(dp: Dispatcher, bot: Bot) -> None:
 
     dp.message.middleware(security_middleware)
     dp.callback_query.middleware(security_middleware)
+
+    locale_middleware = LocaleMiddleware()
+    dp.message.middleware(locale_middleware)
+    dp.callback_query.middleware(locale_middleware)
+    dp.pre_checkout_query.middleware(locale_middleware)
 
     logging.info("Security middleware initialized")
 
@@ -254,6 +261,7 @@ async def start_bot() -> None:
         # Getting information about the bot
         bot_info = await bot.get_me()
         logging.info(f"Starting bot: @{bot_info.username} (ID: {bot_info.id})")
+        await setup_bot_commands(bot)
 
         # Initialization at startup
         await __on_start_up(dp, bot)

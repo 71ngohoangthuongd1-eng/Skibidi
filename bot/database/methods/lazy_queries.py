@@ -91,6 +91,20 @@ async def query_items_in_position(item_name: str, offset: int = 0, limit: int = 
         return [row[0] for row in result.all()]
 
 
+async def query_goods_names(offset: int = 0, limit: int = 10, count_only: bool = False) -> Any:
+    """Query product names with pagination."""
+    async with Database().session() as s:
+        if count_only:
+            return (await s.execute(select(func.count(Goods.id)))).scalar() or 0
+        result = await s.execute(
+            select(Goods.name)
+            .order_by(Goods.name.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return [row[0] for row in result.all()]
+
+
 async def query_user_referrals(user_id: int, offset: int = 0, limit: int = 10, count_only: bool = False) -> Any:
     """Query user's referrals with earnings info"""
     async with Database().session() as s:

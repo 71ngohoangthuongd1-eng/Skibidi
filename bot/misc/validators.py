@@ -1,5 +1,9 @@
 from decimal import Decimal
-from typing import Optional, Annotated, Self
+from typing import Optional, Annotated
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 import re
 
@@ -7,8 +11,8 @@ import re
 class PaymentRequest(BaseModel):
     """Validate payment request data"""
     amount: Decimal = Field(..., gt=0, le=100000)
-    currency: str = Field(..., min_length=3, max_length=3)
-    provider: str = Field(..., pattern="^(telegram|stars|cryptopay|fiat)$")
+    currency: str = Field(..., min_length=3, max_length=8)
+    provider: str = Field(..., pattern="^(telegram|stars|cryptopay|fiat|usdt|vietqr)$")
 
     @field_validator('amount')
     @classmethod

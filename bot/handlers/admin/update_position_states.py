@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery, Message
 
 from bot.database.models import Permission
 from bot.database.methods import get_item_info_cached, add_values_to_item, update_item, check_value, delete_only_items
+from bot.handlers.admin.goods_management_states import _render_position_picker
 from bot.handlers.other import _parse_channel_username
 
 from bot.keyboards.inline import back, question_buttons, simple_buttons
@@ -18,12 +19,63 @@ from bot.states import UpdateItemFSM
 router = Router()
 
 
+def _extract_item_values(raw_text: str | None) -> list[str]:
+    """Split multiline admin input into one stock value per non-empty line."""
+    return [line.strip() for line in (raw_text or "").splitlines() if line.strip()]
+
+
+async def _start_amount_update_with_item(target, state, item_name: str, *, edit: bool) -> None:
+    reply = target.edit_text if edit else target.answer
+    item = await get_item_info_cached(item_name)
+    if not item:
+        await reply(
+            localize('admin.goods.update.amount.not_exists'),
+            reply_markup=back('goods_management')
+        )
+        return
+
+    if await check_value(item_name):
+        await reply(
+            localize('admin.goods.update.amount.infinity_forbidden'),
+            reply_markup=back('goods_management')
+        )
+        return
+
+    await state.update_data(item_name=item_name)
+    await reply(
+        localize('admin.goods.add.values.prompt_multi'),
+        reply_markup=back("goods_management")
+    )
+    await state.set_state(UpdateItemFSM.waiting_item_values_upd)
+
+
+async def _start_full_update_with_item(target, state, item_name: str, *, edit: bool) -> None:
+    reply = target.edit_text if edit else target.answer
+    item = await get_item_info_cached(item_name)
+    if not item:
+        await reply(
+            localize('admin.goods.update.not_exists'),
+            reply_markup=back('goods_management')
+        )
+        return
+
+    await state.update_data(item_old_name=item_name, item_category=item['category_id'])
+    await reply(localize('admin.goods.update.prompt.new_name'), reply_markup=back('goods_management'))
+    await state.set_state(UpdateItemFSM.waiting_item_new_name)
+
+
 @router.callback_query(F.data == 'update_item_amount', HasPermissionFilter(permission=Permission.CATALOG_MANAGE))
 async def update_item_amount_callback_handler(call: CallbackQuery, state):
     """Starts the flow for adding values (stock) to an existing item."""
-    await call.message.edit_text(
-        localize('admin.goods.update.amount.prompt.name'),
-        reply_markup=back("goods_management")
+    await _render_position_picker(
+        call.message,
+        state,
+        0,
+        title_key='admin.goods.update.amount.prompt.name',
+        pick_prefix='suia_',
+        nav_prefix='guia_',
+        back_cb='goods_management',
+        state_prefix='update_amount_picker',
     )
     await state.set_state(UpdateItemFSM.waiting_item_name_for_amount_upd)
 
@@ -34,30 +86,35 @@ async def check_item_name_for_amount_upd(message: Message, state):
     Validate that item exists and is NOT infinite.
     If item is infinite — values cannot be added.
     """
-    item_name = message.text.strip()
-    item = await get_item_info_cached(item_name)
-    if not item:
-        await message.answer(
-            localize('admin.goods.update.amount.not_exists'),
-            reply_markup=back('goods_management')
-        )
-        return
+    await _start_amount_update_with_item(message, state, message.text.strip(), edit=False)
 
-    # If item is infinite, we logically can't add individual values
-    if await check_value(item_name):
-        await message.answer(
-            localize('admin.goods.update.amount.infinity_forbidden'),
-            reply_markup=back('goods_management')
-        )
-        return
 
-    # Otherwise start collecting values
-    await state.update_data(item_name=item_name)
-    await message.answer(
-        localize('admin.goods.add.values.prompt_multi'),
-        reply_markup=back("goods_management")
+@router.callback_query(F.data.startswith('guia_'), HasPermissionFilter(permission=Permission.CATALOG_MANAGE))
+async def navigate_update_amount_picker(call: CallbackQuery, state):
+    try:
+        page = int(call.data.split('_', 1)[1])
+    except (TypeError, ValueError):
+        page = 0
+    await _render_position_picker(
+        call.message,
+        state,
+        page,
+        title_key='admin.goods.update.amount.prompt.name',
+        pick_prefix='suia_',
+        nav_prefix='guia_',
+        back_cb='goods_management',
+        state_prefix='update_amount_picker',
     )
-    await state.set_state(UpdateItemFSM.waiting_item_values_upd)
+
+
+@router.callback_query(F.data.startswith('suia_'), HasPermissionFilter(permission=Permission.CATALOG_MANAGE))
+async def pick_item_for_amount_update(call: CallbackQuery, state):
+    item_hash = call.data[5:]
+    item_name = (await state.get_data()).get('update_amount_picker_item_hash_mapping', {}).get(item_hash)
+    if not item_name:
+        await call.answer(localize('errors.invalid_data'), show_alert=True)
+        return
+    await _start_amount_update_with_item(call.message, state, item_name, edit=True)
 
 
 @router.message(UpdateItemFSM.waiting_item_values_upd, F.text)
@@ -68,11 +125,16 @@ async def updating_item_values(message: Message, state):
     """
     data = await state.get_data()
     values = data.get('item_values', [])
-    values.append(message.text)
+    new_values = _extract_item_values(message.text)
+    if not new_values:
+        await message.answer(localize('admin.goods.add.single.empty'), reply_markup=back('goods_management'))
+        return
+
+    values.extend(new_values)
     await state.update_data(item_values=values)
 
     await message.answer(
-        localize('admin.goods.add.values.added', value=message.text, count=len(values)),
+        localize('admin.goods.add.values.added_batch', added_now=len(new_values), count=len(values)),
         reply_markup=simple_buttons([
             (localize('btn.add_values_finish'), "finish_updating_items"),
             (localize('btn.back'), "goods_management")
@@ -154,25 +216,51 @@ async def updating_item_amount(call: CallbackQuery, state):
 @router.callback_query(F.data == 'update_item', HasPermissionFilter(permission=Permission.CATALOG_MANAGE))
 async def update_item_callback_handler(call: CallbackQuery, state):
     """Starts the full update flow."""
-    await call.message.edit_text(localize('admin.goods.update.prompt.name'), reply_markup=back("goods_management"))
+    await _render_position_picker(
+        call.message,
+        state,
+        0,
+        title_key='admin.goods.update.prompt.name',
+        pick_prefix='sufi_',
+        nav_prefix='gufi_',
+        back_cb='goods_management',
+        state_prefix='update_item_picker',
+    )
     await state.set_state(UpdateItemFSM.waiting_item_name_for_update)
 
 
 @router.message(UpdateItemFSM.waiting_item_name_for_update, F.text)
 async def check_item_name_for_update(message: Message, state):
     """Validate item and ask for a new name."""
-    item_name = message.text.strip()
-    item = await get_item_info_cached(item_name)
-    if not item:
-        await message.answer(
-            localize('admin.goods.update.not_exists'),
-            reply_markup=back('goods_management')
-        )
-        return
+    await _start_full_update_with_item(message, state, message.text.strip(), edit=False)
 
-    await state.update_data(item_old_name=item_name, item_category=item['category_id'])
-    await message.answer(localize('admin.goods.update.prompt.new_name'), reply_markup=back('goods_management'))
-    await state.set_state(UpdateItemFSM.waiting_item_new_name)
+
+@router.callback_query(F.data.startswith('gufi_'), HasPermissionFilter(permission=Permission.CATALOG_MANAGE))
+async def navigate_full_update_picker(call: CallbackQuery, state):
+    try:
+        page = int(call.data.split('_', 1)[1])
+    except (TypeError, ValueError):
+        page = 0
+    await _render_position_picker(
+        call.message,
+        state,
+        page,
+        title_key='admin.goods.update.prompt.name',
+        pick_prefix='sufi_',
+        nav_prefix='gufi_',
+        back_cb='goods_management',
+        state_prefix='update_item_picker',
+    )
+
+
+@router.callback_query(F.data.startswith('sufi_'), HasPermissionFilter(permission=Permission.CATALOG_MANAGE))
+async def pick_item_for_full_update(call: CallbackQuery, state):
+    item_hash = call.data[5:]
+    item_name = (await state.get_data()).get('update_item_picker_item_hash_mapping', {}).get(item_hash)
+    if not item_name:
+        await call.answer(localize('errors.invalid_data'), show_alert=True)
+        return
+    await _start_full_update_with_item(call.message, state, item_name, edit=True)
 
 
 @router.message(UpdateItemFSM.waiting_item_new_name, F.text)
@@ -302,11 +390,16 @@ async def updating_item(message: Message, state):
     """
     data = await state.get_data()
     values = data.get('item_values', [])
-    values.append(message.text)
+    new_values = _extract_item_values(message.text)
+    if not new_values:
+        await message.answer(localize('admin.goods.add.single.empty'), reply_markup=back('goods_management'))
+        return
+
+    values.extend(new_values)
     await state.update_data(item_values=values)
 
     await message.answer(
-        localize('admin.goods.add.values.added', value=message.text, count=len(values)),
+        localize('admin.goods.add.values.added_batch', added_now=len(new_values), count=len(values)),
         reply_markup=simple_buttons([
             (localize('btn.add_values_finish'), "finish_update_item"),
             (localize('btn.back'), "goods_management")
