@@ -544,6 +544,23 @@ python run.py
 
 Open in browser: http://localhost:9090/admin
 
+### 🚀 Deploy to Vercel (serverless)
+
+A serverless entrypoint ships in `api/index.py`; the bot runs in webhook mode with
+recovery/cleanup driven by Vercel Cron instead of background tasks.
+
+```bash
+# 1. Configure env vars in Vercel: TOKEN, OWNER_ID, DATABASE_URL (external Postgres,
+#    e.g. Neon), ADMIN_USERNAME, ADMIN_PASSWORD, SECRET_KEY, WEBHOOK_ENABLED=1,
+#    WEBHOOK_SECRET, plus optional REDIS_* / SEPAY_* / PAY_* values.
+# 2. Deploy
+vercel --prod
+# 3. Register the webhook (once per environment)
+curl https://<project>.vercel.app/api/set-webhook
+```
+
+Full checklist and known serverless trade-offs: see [DEPLOY.md](DEPLOY.md#5-vercel-serverless-deploy).
+
 ### 📝 Post-Installation
 
 1. **Add bot to channel** (if using news channel feature):
