@@ -219,6 +219,16 @@ async def warm_up_critical_caches():
 async def start_bot() -> None:
     """Start the bot with enhanced security and monitoring"""
 
+    from bot.misc.env import is_serverless, validate_production
+
+    # Fail safe: the Vercel entrypoint (api/index.py) must be used on Vercel, never polling.
+    if is_serverless():
+        raise RuntimeError(
+            "Refusing to run long-lived polling/webhook server on a serverless runtime "
+            "(VERCEL=1 or BOT_MODE=webhook). Use the api/index.py ASGI entrypoint instead."
+        )
+    validate_production()
+
     # Logging Configuration
     configure_logging(
         console=EnvKeys.LOG_TO_STDOUT == "1",

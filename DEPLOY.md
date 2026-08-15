@@ -106,17 +106,24 @@ Required every deploy:
 - `TOKEN` — Telegram bot token
 - `OWNER_ID`
 - `DATABASE_URL` — full async SQLAlchemy URL to the external Postgres
+- `REDIS_URL` — full `rediss://...` URL (Upstash etc.), used for FSM, cache and rate limiting
 - `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SECRET_KEY`
 - `WEBHOOK_ENABLED=1`
 - `WEBHOOK_SECRET` — random secret Telegram will send back as `X-Telegram-Bot-Api-Secret-Token`
+- `CRON_SECRET` — random secret Vercel Cron sends as `Authorization: Bearer <CRON_SECRET>`
 - SePay for bank auto-confirm: `SEPAY_BANK_NAME`, `SEPAY_ACCOUNT_NO`, `SEPAY_ACCOUNT_NAME`,
   `SEPAY_WEBHOOK_SECRET`, `SEPAY_IPN_PATH=/sepay/ipn`, `SEPAY_PAYMENT_PREFIX`
 
 Optional:
-- `REDIS_ENABLED=1`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` — else the bot logs a
-  warning and falls back to `MemoryStorage`
+- `REDIS_ENABLED=1` — must stay `1` on Vercel; `validate_production()` hard-fails if disabled
 - `PAY_CURRENCY`, `MIN_AMOUNT`, `MAX_AMOUNT`, `CHANNEL_URL`, `CHANNEL_ID`, `HELPER_ID`, `RULES`, `BOT_LOCALE`
 - Cleanup retention: `AUDIT_RETENTION_DAYS`, `PAYMENTS_RETENTION_DAYS`
+- Pool tuning: `DB_POOL_SIZE` (5), `DB_MAX_OVERFLOW` (10), `DB_POOL_RECYCLE` (1800)
+
+Note: `api/index.py` runs `validate_production()` when `VERCEL=1` (set automatically) or
+`BOT_MODE=webhook`. It refuses to boot if: SQLite is configured, Redis is disabled, the
+admin credentials are the insecure defaults, or `WEBHOOK_ENABLED` is unset on Vercel.
+It also refuses to start long-lived polling/webhook servers on serverless.
 
 Warning: the Vercel build runs the default Python (3.12, pinned by `.python-version`),
 not your local run's set of workers.
@@ -151,6 +158,11 @@ Cron limits to remember:
   deployment — a `*/5 * * * *` recovery cron would be rejected at deploy time.
 - Pro / Enterprise: sub-daily schedules allowed; if you need payment recovery more often,
   add it as `/api/cron/recovery` with `*/5 * * * *`.
+
+Both cron endpoints authenticate with `Authorization: Bearer <CRON_SECRET>` (Vercel sends
+this when `CRON_SECRET` is set) and are also protected by a distributed Redis lock, so
+overlapping invocations are harmless. The recovery endpoint additionally detects and
+re-validates stuck `pending` payments.
 
 Payment recovery and cleanup also run automatically at startup of a warm instance only
 in polling mode; on Vercel they are driven exclusively by these cron endpoints or by an

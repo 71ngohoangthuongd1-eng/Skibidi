@@ -13,6 +13,7 @@ class Database(metaclass=SingletonMeta):
     BASE = declarative_base()
 
     def __init__(self):
+        from bot.misc.env import EnvKeys
         database_url = dsn()
         url = make_url(database_url)
         engine_kwargs = {
@@ -23,11 +24,14 @@ class Database(metaclass=SingletonMeta):
         if url.get_backend_name() == "sqlite":
             engine_kwargs["connect_args"] = {"check_same_thread": False}
         else:
+            pool_size = EnvKeys.DB_POOL_SIZE
+            max_overflow = EnvKeys.DB_MAX_OVERFLOW
+            pool_recycle = EnvKeys.DB_POOL_RECYCLE
             engine_kwargs.update(
-                pool_size=20,
-                max_overflow=40,
+                pool_size=pool_size,
+                max_overflow=max_overflow,
                 pool_timeout=30,
-                pool_recycle=3600,
+                pool_recycle=pool_recycle,
                 connect_args={
                     "timeout": 10,
                     "command_timeout": 30,
@@ -45,7 +49,9 @@ class Database(metaclass=SingletonMeta):
         if url.get_backend_name() == "sqlite":
             logging.info("SQLite database initialized")
         else:
-            logging.info(f"Database pool initialized: size={20}, max_overflow={40}")
+            logging.info(
+                f"Database pool initialized: size={pool_size}, max_overflow={max_overflow}, recycle={pool_recycle}"
+            )
 
         self.__SessionLocal = async_sessionmaker(
             bind=self.__engine,

@@ -4,6 +4,11 @@ from typing import Final
 from urllib.parse import quote_plus
 
 
+def is_serverless() -> bool:
+    """True when running inside Vercel serverless runtime (or forced webhook mode)."""
+    return os.getenv("VERCEL") == "1" or os.getenv("BOT_MODE") == "webhook"
+
+
 class EnvKeys(ABC):
     """Secure environment configuration with validation"""
 
@@ -22,6 +27,11 @@ class EnvKeys(ABC):
     TOKEN: Final = _get_required('TOKEN')
     OWNER_ID: Final = int(_get_required('OWNER_ID'))
 
+    # Runtime mode
+    VERCEL: Final = _get_optional("VERCEL", "0")
+    BOT_MODE: Final = _get_optional("BOT_MODE", "")
+    CRON_SECRET: Final = _get_optional("CRON_SECRET", "")
+
     # Database
     DATABASE_URL_OVERRIDE: Final = _get_optional("DATABASE_URL")
     POSTGRES_DB: Final = _get_required("POSTGRES_DB") if not DATABASE_URL_OVERRIDE else _get_optional("POSTGRES_DB")
@@ -30,9 +40,14 @@ class EnvKeys(ABC):
     DB_PORT: Final = int(_get_optional("DB_PORT", "5432"))
     DB_DRIVER: Final = _get_optional("DB_DRIVER", "postgresql+asyncpg")
     POSTGRES_HOST: Final = _get_optional("POSTGRES_HOST", "localhost")
+    # Connection pool tuning (serverless instances share the same Postgres, so cap small pools)
+    DB_POOL_SIZE: Final = int(_get_optional("DB_POOL_SIZE", "5"))
+    DB_MAX_OVERFLOW: Final = int(_get_optional("DB_MAX_OVERFLOW", "10"))
+    DB_POOL_RECYCLE: Final = int(_get_optional("DB_POOL_RECYCLE", "1800"))
 
     # Redis
     REDIS_ENABLED: Final = _get_optional("REDIS_ENABLED", "1")
+    REDIS_URL: Final = _get_optional("REDIS_URL", "")
     REDIS_HOST: Final = _get_optional("REDIS_HOST", "localhost")
     REDIS_PORT: Final = int(_get_optional("REDIS_PORT", "6379"))
     REDIS_DB: Final = int(_get_optional("REDIS_DB", "0"))
@@ -90,3 +105,48 @@ class EnvKeys(ABC):
     DATABASE_URL: Final = DATABASE_URL_OVERRIDE or (
         f"postgresql+asyncpg://{POSTGRES_USER}:{quote_plus(POSTGRES_PASSWORD)}@{POSTGRES_HOST}:{DB_PORT}/{POSTGRES_DB}"
     )
+
+
+def validate_production() -> None:
+    """Fail fast with a clear message when a serverless-safe configuration is missing.
+
+    Called only when running on Vercel (VERCEL=1) or when BOT_MODE=webhook is forced.
+    Never breaks local development (polling + SQLite + in-memory are still allowed).
+    """
+    if not is_serverless():
+        return
+
+    errors = []
+
+    # 1. PostgreSQL is mandatory on serverless (no local file database).
+    url = EnvKeys.DATABASE_URL
+    backend = (url or "").split(":", 1)[0]
+    if backend.startswith("sqlite"):
+        errors.append(
+            "SQLite is not allowed in production. Set DATABASE_URL to a PostgreSQL "
+            "async URL (e.g. postgresql+asyncpg://...) or configure POSTGRES_* vars."
+        )
+
+    # 2. Redis is mandatory for FSM state and distributed caching.
+    if EnvKeys.REDIS_ENABLED != "1":
+        errors.append(
+            "REDIS_ENABLED must be '1' on serverless. In-memory (MemoryStorage) cannot "
+            "persist FSM/dialog state across Vercel instances."
+        )
+
+    # 3. Webhook secret protects the Telegram webhook endpoint.
+    if not EnvKeys.WEBHOOK_SECRET:
+        errors.append("WEBHOOK_SECRET is recommended on serverless to verify webhook requests.")
+
+    # 4. Bot must run via webhook (not polling) on Vercel.
+    if EnvKeys.VERCEL == "1" and EnvKeys.WEBHOOK_ENABLED != "1":
+        errors.append("WEBHOOK_ENABLED must be '1' on Vercel (the bot cannot poll).")
+
+    # 5. Non-default admin credentials.
+    if EnvKeys.ADMIN_USERNAME in ("", "admin") or EnvKeys.ADMIN_PASSWORD in ("", "admin") or EnvKeys.SECRET_KEY in ("", "change-me-in-production", "change-me"):
+        errors.append("Set strong ADMIN_USERNAME / ADMIN_PASSWORD / SECRET_KEY in production.")
+
+    if errors:
+        raise RuntimeError(
+            "Invalid production (Vercel) configuration:\n  - " + "\n  - ".join(errors)
+        )

@@ -221,14 +221,14 @@ async def handle_sepay_ipn(payload: dict, bot) -> None:
                     amount=payment.amount,
                     currency=payment.currency,
                 ),
-                reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]),
+reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]),
             )
         except Exception as e:
             logger.error(f"Failed to notify user {payment.user_id} about approved SePay payment: {e}")
 
         return
 
-    intent = get_direct_purchase_intent(payment.id)
+    intent = await get_direct_purchase_intent(payment.id)
     if payment.provider == "sepay_item" and intent:
         purchase_success, purchase_message, purchase_data = await buy_item_transaction(
             payment.user_id,
@@ -253,7 +253,7 @@ async def handle_sepay_ipn(payload: dict, bot) -> None:
                 )
             except Exception as e:
                 logger.error(f"Failed to notify user {payment.user_id} about SePay direct purchase fallback: {e}")
-        delete_direct_purchase_intent(payment.id)
+        await delete_direct_purchase_intent(payment.id)
 
 
 def _price_with_promo(raw_price: Decimal, state_data: dict) -> Decimal:
@@ -277,7 +277,7 @@ async def _create_or_reuse_direct_purchase_payment(
 
     if existing_id:
         payment = await _get_payment_by_id(int(existing_id))
-        intent = get_direct_purchase_intent(int(existing_id))
+        intent = await get_direct_purchase_intent(int(existing_id))
         if (
             payment
             and payment.user_id == user_id
@@ -297,7 +297,7 @@ async def _create_or_reuse_direct_purchase_payment(
         amount=float(amount),
         currency=EnvKeys.PAY_CURRENCY,
     )
-    set_direct_purchase_intent(payment_id, item_name=item_name, promo_code=promo_code)
+    await set_direct_purchase_intent(payment_id, item_name=item_name, promo_code=promo_code)
     await state.update_data(
         direct_purchase_payment_id=payment_id,
         direct_purchase_item=item_name,
@@ -643,7 +643,7 @@ async def item_sepay_done_callback_handler(call: CallbackQuery):
         return
 
     payment = await _get_payment_by_id(payment_id)
-    intent = get_direct_purchase_intent(payment_id)
+    intent = await get_direct_purchase_intent(payment_id)
     if not payment or payment.provider != "sepay_item" or payment.user_id != call.from_user.id or not intent:
         await call.answer(localize("errors.invalid_data"), show_alert=True)
         return

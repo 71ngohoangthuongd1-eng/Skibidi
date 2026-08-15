@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Dict, Any, Callable, Awaitable
+from typing import Dict, Any, Callable, Awaitable, Optional
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -10,6 +10,7 @@ from aiogram.exceptions import TelegramBadRequest
 
 from bot.i18n import localize
 from bot.database.models import Permission
+from bot.misc.caching.storage import get_shared_redis
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ class RateLimiter:
         current_time = time.time()
         return [req_time for req_time in requests if current_time - req_time < window]
 
-    def is_banned(self, user_id: int) -> bool:
+    async def is_banned(self, user_id: int) -> bool:
         """Checks if the user is banned"""
         if user_id not in self.banned_users:
             return False
@@ -61,11 +62,11 @@ class RateLimiter:
 
         return True
 
-    def ban_user(self, user_id: int):
+    async def ban_user(self, user_id: int):
         """Bans the user for a period of time"""
         self.banned_users[user_id] = time.time()
 
-    def check_global_limit(self, user_id: int) -> bool:
+    async def check_global_limit(self, user_id: int) -> bool:
         """Checks the global request limit"""
         current_time = time.time()
 
@@ -87,7 +88,7 @@ class RateLimiter:
         self.user_requests[user_id].append(current_time)
         return True
 
-    def check_action_limit(self, user_id: int, action: str) -> bool:
+    async def check_action_limit(self, user_id: int, action: str) -> bool:
         """Checks the limit for a specific action"""
         if action not in self.config.action_limits:
             return True
@@ -116,9 +117,9 @@ class RateLimiter:
         self.user_actions[action][user_id].append(current_time)
         return True
 
-    def get_wait_time(self, user_id: int, action: str = None) -> int:
+    async def get_wait_time(self, user_id: int, action: str = None) -> int:
         """Returns the wait time until the next available request"""
-        if self.is_banned(user_id):
+        if await self.is_banned(user_id):
             ban_time = self.banned_users[user_id]
             return int(self.config.ban_duration - (time.time() - ban_time))
 
@@ -137,12 +138,86 @@ class RateLimiter:
         return 0
 
 
+class RedisRateLimiter:
+    """Distributed, Redis-backed rate limiter (fixed window + ban).
+
+    Used on serverless production so limits hold across Vercel instances.
+    """
+
+    def __init__(self, config: RateLimitConfig, redis):
+        self.config = config
+        self.redis = redis
+        self._prefix = "rl"
+        self._ban_prefix = "rl:ban"
+
+    @staticmethod
+    def _key(prefix: str, *parts) -> str:
+        return ":".join(str(p) for p in (prefix, *parts))
+
+    @staticmethod
+    def _window(seconds: int) -> int:
+        return int(time.time()) // int(seconds)
+
+    async def is_banned(self, user_id: int) -> bool:
+        try:
+            return bool(await self.redis.exists(self._key(self._ban_prefix, user_id)))
+        except Exception:
+            return False
+
+    async def ban_user(self, user_id: int) -> None:
+        try:
+            await self.redis.setex(
+                self._key(self._ban_prefix, user_id),
+                self.config.ban_duration,
+                "1",
+            )
+        except Exception:
+            pass
+
+    async def check_global_limit(self, user_id: int) -> bool:
+        try:
+            key = self._key(self._prefix, "global", user_id, self._window(self.config.global_window))
+            count = await self.redis.incr(key)
+            if count == 1:
+                await self.redis.expire(key, self.config.global_window + 5)
+            return count <= self.config.global_limit
+        except Exception:
+            return True
+
+    async def check_action_limit(self, user_id: int, action: str) -> bool:
+        if action not in self.config.action_limits:
+            return True
+        limit, window = self.config.action_limits[action]
+        try:
+            key = self._key(self._prefix, "action", action, user_id, self._window(window))
+            count = await self.redis.incr(key)
+            if count == 1:
+                await self.redis.expire(key, window + 5)
+            return count <= limit
+        except Exception:
+            return True
+
+    async def get_wait_time(self, user_id: int, action: str = None) -> int:
+        # Best-effort: return remaining seconds of the current fixed window.
+        if action and action in self.config.action_limits:
+            limit, window = self.config.action_limits[action]
+            key = self._key(self._prefix, "action", action, user_id, self._window(window))
+            try:
+                ttl = await self.redis.ttl(key)
+                if ttl > 0:
+                    return ttl
+            except Exception:
+                pass
+        return 0
+
+
 class RateLimitMiddleware(BaseMiddleware):
-    """Middleware to limit the frequency of requests"""
+    """Middleware to limit the frequency of requests (Redis-aware, memory fallback)."""
 
     def __init__(self, config: RateLimitConfig = None, auth_middleware=None):
         self.config = config or RateLimitConfig()
-        self.limiter = RateLimiter(self.config)
+        self.redis = get_shared_redis()
+        self.limiter = RedisRateLimiter(self.config, self.redis) if self.redis else RateLimiter(self.config)
         self.auth_middleware = auth_middleware
         self.action_mapping = {
             # Callback data -> action name
@@ -207,8 +282,8 @@ class RateLimitMiddleware(BaseMiddleware):
         user_id = user.id
 
         # Checking the ban
-        if self.limiter.is_banned(user_id):
-            wait_time = self.limiter.get_wait_time(user_id)
+        if await self.limiter.is_banned(user_id):
+            wait_time = await self.limiter.get_wait_time(user_id)
 
             if isinstance(event, CallbackQuery):
                 await event.answer(
@@ -230,8 +305,8 @@ class RateLimitMiddleware(BaseMiddleware):
         action = self._get_action_from_event(event)
 
         # Checking the limits
-        if not self.limiter.check_global_limit(user_id):
-            self.limiter.ban_user(user_id)
+        if not await self.limiter.check_global_limit(user_id):
+            await self.limiter.ban_user(user_id)
 
             if isinstance(event, CallbackQuery):
                 await event.answer(
@@ -242,8 +317,8 @@ class RateLimitMiddleware(BaseMiddleware):
                 await event.answer(localize("middleware.above_limits"))
             return None
 
-        if not self.limiter.check_action_limit(user_id, action):
-            wait_time = self.limiter.get_wait_time(user_id, action)
+        if not await self.limiter.check_action_limit(user_id, action):
+            wait_time = await self.limiter.get_wait_time(user_id, action)
 
             if isinstance(event, CallbackQuery):
                 await event.answer(

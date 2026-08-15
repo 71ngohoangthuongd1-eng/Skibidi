@@ -400,6 +400,18 @@ def create_admin_app(bot=None) -> Starlette:
             return JSONResponse({"success": False}, status_code=400)
 
         bot_instance = getattr(request.app.state, "bot", None)
+        # On a cold serverless slot the runtime may not be built yet; ask the host app to
+        # initialize it before handling the IPN so the payment is actually finalized.
+        if bot_instance is None:
+            ensure_runtime = getattr(request.app.state, "ensure_runtime", None)
+            if ensure_runtime is not None:
+                try:
+                    await ensure_runtime()
+                    bot_instance = getattr(request.app.state, "bot", None)
+                except Exception as e:
+                    logger.error(f"ensure_runtime failed in sepay_ipn: {e}; skipping delivery")
+                    bot_instance = None
+
         if bot_instance:
             from bot.handlers.user.balance_and_payment import handle_sepay_ipn
             import asyncio

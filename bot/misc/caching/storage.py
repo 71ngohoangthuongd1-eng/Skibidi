@@ -4,6 +4,45 @@ from redis.asyncio import Redis
 from aiogram.fsm.storage.redis import RedisStorage, StorageKey
 from bot.misc import EnvKeys
 
+_SHARED_REDIS: Optional[Redis] = None
+
+
+def build_redis_client() -> Redis:
+    """Build a Redis client honoring REDIS_URL (e.g. Upstash) or host/port settings."""
+    if EnvKeys.REDIS_URL.strip():
+        return Redis.from_url(
+            EnvKeys.REDIS_URL.strip(),
+            decode_responses=False,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+        )
+    return Redis(
+        host=EnvKeys.REDIS_HOST,
+        port=EnvKeys.REDIS_PORT,
+        db=EnvKeys.REDIS_DB,
+        password=EnvKeys.REDIS_PASSWORD,
+        decode_responses=False,
+        socket_connect_timeout=5,
+        socket_timeout=5,
+    )
+
+
+def get_shared_redis() -> Optional[Redis]:
+    """Return a lazily-created process-wide Redis client for non-FSM use.
+
+    Serverless warm slots reuse it across requests; returns None when Redis is disabled.
+    """
+    global _SHARED_REDIS
+    if EnvKeys.REDIS_ENABLED != "1":
+        return None
+    if _SHARED_REDIS is None:
+        try:
+            _SHARED_REDIS = build_redis_client()
+        except Exception as e:
+            logging.error(f"Failed to create shared Redis client: {e}")
+            return None
+    return _SHARED_REDIS
+
 
 class CustomRedisStorage(RedisStorage):
     """
@@ -51,15 +90,7 @@ def get_redis_storage() -> Optional[RedisStorage]:
         return None
 
     try:
-        redis = Redis(
-            host=EnvKeys.REDIS_HOST,
-            port=EnvKeys.REDIS_PORT,
-            db=EnvKeys.REDIS_DB,
-            password=EnvKeys.REDIS_PASSWORD,
-            decode_responses=False,
-            socket_connect_timeout=5,
-            socket_timeout=5,
-        )
+        redis = build_redis_client()
 
         # Use custom storage with TTL
         storage = CustomRedisStorage(
@@ -68,7 +99,7 @@ def get_redis_storage() -> Optional[RedisStorage]:
             data_ttl=3600,  # 1 hour
         )
 
-        logging.info(f"Redis storage configured: {EnvKeys.REDIS_HOST}:{EnvKeys.REDIS_PORT}")
+        logging.info(f"Redis storage configured: {EnvKeys.REDIS_URL or f'{EnvKeys.REDIS_HOST}:{EnvKeys.REDIS_PORT}'}")
         return storage
 
     except Exception as e:
