@@ -105,6 +105,24 @@ async def query_goods_names(offset: int = 0, limit: int = 10, count_only: bool =
         return [row[0] for row in result.all()]
 
 
+async def query_in_stock_items(offset: int = 0, limit: int = 10, count_only: bool = False) -> Any:
+    """Query product names that currently have stock (finite values or infinity rows)."""
+    async with Database().session() as s:
+        base = (
+            select(Goods.name)
+            .join(ItemValues, ItemValues.item_id == Goods.id)
+            .group_by(Goods.id, Goods.name)
+            .order_by(Goods.name.asc())
+        )
+        if count_only:
+            count_q = select(func.count()).select_from(base.subquery())
+            return (await s.execute(count_q)).scalar() or 0
+        result = await s.execute(
+            base.offset(offset).limit(limit)
+        )
+        return [row[0] for row in result.all()]
+
+
 async def query_user_referrals(user_id: int, offset: int = 0, limit: int = 10, count_only: bool = False) -> Any:
     """Query user's referrals with earnings info"""
     async with Database().session() as s:

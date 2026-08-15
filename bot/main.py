@@ -21,13 +21,14 @@ from bot.middleware.locale import LocaleMiddleware
 from bot.misc.caching import init_cache_manager, get_cache_manager
 from bot.misc.caching import CacheScheduler
 from bot.misc.caching import get_redis_storage
-from bot.misc.services import RecoveryManager, CleanupManager
+from bot.misc.services import RecoveryManager, CleanupManager, ProductAdManager
 from bot.misc.metrics import init_metrics, get_metrics, AnalyticsMiddleware
 from bot.database.main import Database as _Database
 
 # Global variables for components
 recovery_manager = None
 cleanup_manager = None
+product_ad_manager = None
 admin_server = None
 cache_scheduler = None
 webhook_active = False
@@ -110,7 +111,7 @@ async def initialize_bot_runtime(dp: Dispatcher, bot: Bot) -> None:
 
 async def __on_start_up(dp: Dispatcher, bot: Bot) -> None:
     """Initialize bot on startup (polling / webhook modes run via run.py)"""
-    global recovery_manager, admin_server, cache_scheduler
+    global recovery_manager, admin_server, cache_scheduler, product_ad_manager
 
     await initialize_bot_runtime(dp, bot)
 
@@ -126,6 +127,10 @@ async def __on_start_up(dp: Dispatcher, bot: Bot) -> None:
     # Start the cleanup manager
     cleanup_manager = CleanupManager()
     await cleanup_manager.start()
+
+    # Start the auto product-ad rotation (no-op when disabled)
+    product_ad_manager = ProductAdManager(bot)
+    await product_ad_manager.start()
 
     # Start the admin web server
     import uvicorn
@@ -146,7 +151,7 @@ async def __on_start_up(dp: Dispatcher, bot: Bot) -> None:
 
 async def __on_shutdown(dp: Dispatcher, bot: Bot) -> None:
     """Initialize bot shutdown"""
-    global recovery_manager, cleanup_manager, admin_server, webhook_active
+    global recovery_manager, cleanup_manager, product_ad_manager, admin_server, webhook_active
 
     logging.info("Starting shutdown...")
 
@@ -167,6 +172,10 @@ async def __on_shutdown(dp: Dispatcher, bot: Bot) -> None:
     # Cleanup Manager Stop
     if cleanup_manager:
         await cleanup_manager.stop()
+
+    # Product Ad Manager Stop
+    if product_ad_manager:
+        await product_ad_manager.stop()
 
     # Delete webhook if it was active
     if webhook_active:

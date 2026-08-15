@@ -236,7 +236,7 @@ async def show_position_from_picker(call: CallbackQuery, state: FSMContext):
         item_hash, page = payload, 0
 
     data = await state.get_data()
-    item_name = data.get('picker_item_hash_mapping', {}).get(item_hash)
+    item_name = data.get('goods_picker_item_hash_mapping', {}).get(item_hash)
     if not item_name:
         await call.answer(localize('errors.invalid_data'), show_alert=True)
         return

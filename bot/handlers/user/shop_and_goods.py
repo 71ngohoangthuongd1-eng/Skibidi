@@ -2,8 +2,10 @@ from decimal import Decimal
 from functools import partial
 
 from aiogram import Router, F
+from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
+from aiogram.enums.chat_type import ChatType
 from aiogram.exceptions import TelegramBadRequest
 
 from bot.database.methods import (
@@ -123,23 +125,24 @@ async def sold_out_callback_handler(call: CallbackQuery):
 
 # --- Shop / categories / items ---
 
-@router.callback_query(F.data == "shop")
-async def shop_callback_handler(call: CallbackQuery, state: FSMContext):
+async def _render_shop(target, state: FSMContext, user_id: int):
     """
     Show list of products directly, without the category step.
+    `target` can be CallbackQuery or Message.
     """
     metrics = get_metrics()
     if metrics:
-        metrics.track_conversion("purchase_funnel", "view_shop", call.from_user.id)
+        metrics.track_conversion("purchase_funnel", "view_shop", user_id)
 
     paginator = LazyPaginator(query_goods_names, per_page=10)
 
     page_items = await paginator.get_page(0)
     if not page_items:
-        await call.message.edit_text(
-            localize("shop.goods.empty"),
-            reply_markup=back("back_to_menu"),
-        )
+        text = localize("shop.goods.empty")
+        if hasattr(target, 'message'):
+            await target.message.edit_text(text, reply_markup=back("back_to_menu"))
+        else:
+            await target.answer(text, reply_markup=back("back_to_menu"))
         await state.clear()
         return
 
@@ -154,13 +157,38 @@ async def shop_callback_handler(call: CallbackQuery, state: FSMContext):
         nav_cb_prefix="gp_",
     )
 
-    await call.message.edit_text(localize("shop.goods.choose"), reply_markup=markup)
+    text = localize("shop.goods.choose")
+    if hasattr(target, 'message'):
+        await target.message.edit_text(text, reply_markup=markup)
+    else:
+        await target.answer(text, reply_markup=markup)
 
     await state.update_data(
         goods_paginator=paginator.get_state(),
         goods_page_items=list(page_items),
     )
     await state.set_state(ShopStates.viewing_goods)
+
+
+@router.callback_query(F.data == "shop")
+async def shop_callback_handler(call: CallbackQuery, state: FSMContext):
+    """
+    Show list of products directly, without the category step.
+    """
+    await _render_shop(call, state, call.from_user.id)
+
+
+@router.message(Command("shop"))
+async def shop_command_handler(message: Message, state: FSMContext):
+    """Open the shop from the /shop command."""
+    if message.chat.type != ChatType.PRIVATE:
+        return
+    await state.clear()
+    await _render_shop(message, state, message.from_user.id)
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        pass
 
 
 @router.callback_query(F.data.startswith('categories-page_'))
@@ -317,6 +345,28 @@ async def item_info_callback_handler(call: CallbackQuery, state: FSMContext):
     await state.update_data(csrf_item=item_name, item_back_data=back_data)
 
     await _render_item_page(call, state, item_name, back_data, user_id=call.from_user.id)
+
+
+
+# --- Product ad (auto-promo rotation) ---
+
+@router.callback_query(F.data.startswith('ad_item:'))
+async def ad_item_callback_handler(call: CallbackQuery, state: FSMContext):
+    """
+    Open the exact product advertised by the auto product-ad rotation.
+    Format: ad_item:{token}
+    """
+    token = call.data.split(':', 1)[1]
+    from bot.misc.services.product_ad import resolve_ad_offer
+
+    item_name = await resolve_ad_offer(token)
+    if not item_name:
+        await call.answer(localize("shop.item.not_found"), show_alert=True)
+        return
+
+    # Reuse the standard item page (with Buy / cart / promo buttons).
+    await state.update_data(csrf_item=item_name, item_back_data="shop")
+    await _render_item_page(call, state, item_name, "shop", user_id=call.from_user.id)
 
 
 
@@ -544,14 +594,11 @@ async def view_reviews_handler(call: CallbackQuery, state: FSMContext):
 
 # --- Bought items ---
 
-@router.callback_query(F.data == "bought_items")
-async def bought_items_callback_handler(call: CallbackQuery, state: FSMContext):
+async def _render_bought_items(target, state: FSMContext, user_id: int):
     """
     Show list of user's purchased items with lazy loading.
+    `target` can be CallbackQuery or Message.
     """
-    user_id = call.from_user.id
-
-    # Create paginator for user's bought items
     query_func = partial(query_user_bought_items, user_id)
     paginator = LazyPaginator(query_func, per_page=10)
 
@@ -564,10 +611,34 @@ async def bought_items_callback_handler(call: CallbackQuery, state: FSMContext):
         nav_cb_prefix="bought-goods-page_user_"
     )
 
-    await call.message.edit_text(localize("purchases.title"), reply_markup=markup)
+    text = localize("purchases.title")
+    if hasattr(target, 'message'):
+        await target.message.edit_text(text, reply_markup=markup)
+    else:
+        await target.answer(text, reply_markup=markup)
 
-    # Save paginator state
     await state.update_data(bought_items_paginator=paginator.get_state())
+
+
+@router.callback_query(F.data == "bought_items")
+async def bought_items_callback_handler(call: CallbackQuery, state: FSMContext):
+    """
+    Show list of user's purchased items with lazy loading.
+    """
+    await _render_bought_items(call, state, call.from_user.id)
+
+
+@router.message(Command("orders"))
+async def orders_command_handler(message: Message, state: FSMContext):
+    """Show purchased items from the /orders command."""
+    if message.chat.type != ChatType.PRIVATE:
+        return
+    await state.clear()
+    await _render_bought_items(message, state, message.from_user.id)
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        pass
 
 
 @router.callback_query(F.data.startswith('bought-goods-page_'))

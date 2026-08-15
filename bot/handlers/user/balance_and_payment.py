@@ -3,14 +3,20 @@ import uuid
 from decimal import Decimal, ROUND_HALF_UP
 
 from aiogram import Router, F
+from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message, PreCheckoutQuery, SuccessfulPayment
 from aiogram.fsm.context import FSMContext
+from aiogram.enums.chat_type import ChatType
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from sqlalchemy import select, update
 
 from bot.database.methods import (
     get_user_referral, buy_item_transaction, process_payment_with_referral,
     create_pending_payment, get_item_info_cached,
+)
+from bot.database.methods.transactions import (
+    ipn_claim_and_credit_topup,
+    process_sepay_item_payment,
 )
 from bot.keyboards import back, payment_menu, close, get_payment_choice, sepay_menu, sepay_confirm_menu, \
     simple_buttons, direct_purchase_choice
@@ -138,6 +144,11 @@ def _normalize_sepay_code(code: str) -> str:
 async def handle_sepay_ipn(payload: dict, bot) -> None:
     """
     Process a SePay IPN event and finalize the matching pending payment.
+
+    Both branches root on a single atomic DB claim of the ``payments`` row so
+    duplicate / concurrent webhooks (Vercel retries) are settled exactly once:
+      - provider == "sepay"      → balance top-up credited once (ipn_claim_and_credit_topup)
+      - provider == "sepay_item" → item delivered once (process_sepay_item_payment)
     """
     transfer_type = (payload.get("transfer_type") or payload.get("transferType") or "").lower()
     if transfer_type not in {"credit", "in"}:
@@ -182,26 +193,23 @@ async def handle_sepay_ipn(payload: dict, bot) -> None:
         )
         return
 
-    referral_percent = EnvKeys.REFERRAL_PERCENT if payment.provider == "sepay" else 0
-    success, error_msg = await process_payment_with_referral(
-        user_id=payment.user_id,
-        amount=expected_amount,
-        provider=payment.provider,
-        external_id=payment.external_id,
-        referral_percent=referral_percent,
-    )
-    if not success:
-        await log_audit(
-            "sepay_ipn_process_failed",
-            level="WARNING",
-            user_id=payment.user_id,
-            resource_type="Payment",
-            resource_id=str(payment.id),
-            details=f"provider={payment.provider}, error={error_msg}",
-        )
-        return
-
     if payment.provider == "sepay":
+        success, claim_status = await ipn_claim_and_credit_topup(
+            payment=payment,
+            amount=expected_amount,
+            referral_percent=EnvKeys.REFERRAL_PERCENT,
+        )
+        if not success:
+            await log_audit(
+                "sepay_ipn_process_failed",
+                level="WARNING",
+                user_id=payment.user_id,
+                resource_type="Payment",
+                resource_id=str(payment.id),
+                details=f"provider={payment.provider}, status={claim_status}",
+            )
+            return
+
         amount_int = int(expected_amount.quantize(Decimal("1."), rounding=ROUND_HALF_UP))
         try:
             user_info = await bot.get_chat(payment.user_id)
@@ -221,7 +229,7 @@ async def handle_sepay_ipn(payload: dict, bot) -> None:
                     amount=payment.amount,
                     currency=payment.currency,
                 ),
-reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]),
+                reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]),
             )
         except Exception as e:
             logger.error(f"Failed to notify user {payment.user_id} about approved SePay payment: {e}")
@@ -229,31 +237,64 @@ reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]
         return
 
     intent = await get_direct_purchase_intent(payment.id)
-    if payment.provider == "sepay_item" and intent:
-        purchase_success, purchase_message, purchase_data = await buy_item_transaction(
-            payment.user_id,
-            intent["item_name"],
-            promo_code=intent.get("promo_code"),
+    if not intent:
+        # Redis intent expired or lost: the payment row carries the delivery hints
+        # that the direct-purchase flow attached locally.
+        intent = {"item_name": getattr(payment, "item_name", None),
+                  "promo_code": getattr(payment, "promo_code", None)}
+    if not intent or not intent.get("item_name"):
+        await log_audit(
+            "sepay_ipn_no_intent",
+            level="WARNING",
+            user_id=payment.user_id,
+            resource_type="Payment",
+            resource_id=str(payment.id),
+            details="sepay_item webhook without a direct-purchase intent",
         )
-        if purchase_success:
-            await _send_direct_purchase_receipt(bot, payment.user_id, purchase_data)
-        else:
-            try:
-                user_locale = get_user_locale(payment.user_id)
-                await bot.send_message(
-                    payment.user_id,
-                    localize_for(
-                        user_locale,
-                        "shop.direct_purchase.approved_balance_only",
-                        reason=purchase_message,
-                        amount=payment.amount,
-                        currency=payment.currency,
-                    ),
-                    reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]),
-                )
-            except Exception as e:
-                logger.error(f"Failed to notify user {payment.user_id} about SePay direct purchase fallback: {e}")
+        return
+
+    item_name = intent.get("item_name")
+    if not item_name:
+        return
+
+    status, purchase_message, purchase_data = await process_sepay_item_payment(
+        payment=payment,
+        amount=expected_amount,
+        item_name=item_name,
+        promo_code=intent.get("promo_code"),
+    )
+
+    if status == "delivered":
+        await _send_direct_purchase_receipt(bot, payment.user_id, purchase_data)
         await delete_direct_purchase_intent(payment.id)
+    elif status == "refunded":
+        try:
+            user_locale = get_user_locale(payment.user_id)
+            await bot.send_message(
+                payment.user_id,
+                localize_for(
+                    user_locale,
+                    "shop.direct_purchase.approved_balance_only",
+                    reason=purchase_message,
+                    amount=payment.amount,
+                    currency=payment.currency,
+                ),
+                reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]),
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify user {payment.user_id} about SePay direct purchase fallback: {e}")
+        await delete_direct_purchase_intent(payment.id)
+    elif status == "already_done":
+        logger.info(f"SePay IPN retry for payment {payment.id}: already processed, skipped")
+    else:
+        await log_audit(
+            "sepay_ipn_process_failed",
+            level="WARNING",
+            user_id=payment.user_id,
+            resource_type="Payment",
+            resource_id=str(payment.id),
+            details=f"provider={payment.provider}, status={status}, msg={purchase_message}",
+        )
 
 
 def _price_with_promo(raw_price: Decimal, state_data: dict) -> Decimal:
@@ -303,7 +344,12 @@ async def _create_or_reuse_direct_purchase_payment(
         direct_purchase_item=item_name,
         direct_purchase_promo=promo_code,
     )
-    return await _get_payment_by_id(payment_id)
+    payment = await _get_payment_by_id(payment_id)
+    # Locally attached delivery hints: survive the 7-day Redis TTL so a late IPN
+    # (or a lost intent) can still determine what the payment was paid for.
+    payment.item_name = item_name
+    payment.promo_code = promo_code
+    return payment
 
 
 async def _send_direct_purchase_receipt(bot, user_id: int, purchase_data: dict):
@@ -344,14 +390,37 @@ async def _send_direct_purchase_receipt(bot, user_id: int, purchase_data: dict):
 @router.callback_query(F.data == "replenish_balance")
 async def replenish_balance_callback_handler(call: CallbackQuery, state: FSMContext):
     """Ask user for the amount if at least one payment method is enabled."""
+    await _ask_replenish_balance(call, state)
+
+
+@router.message(Command("balance"))
+async def balance_command_handler(message: Message, state: FSMContext):
+    """Open the balance/refill screen from the /balance command."""
+    if message.chat.type != ChatType.PRIVATE:
+        return
+    await state.clear()
+    await _ask_replenish_balance(message, state)
+    try:
+        await message.delete()
+    except TelegramBadRequest:
+        pass
+
+
+async def _ask_replenish_balance(target, state: FSMContext):
+    """Ask user for the amount if at least one payment method is enabled.
+    `target` can be CallbackQuery or Message."""
     if not _any_payment_method_enabled():
-        await call.answer(localize("payments.not_configured"), show_alert=True)
+        if hasattr(target, 'message'):
+            await target.answer(localize("payments.not_configured"), show_alert=True)
+        else:
+            await target.answer(localize("payments.not_configured"), reply_markup=back('back_to_menu'))
         return
 
-    await call.message.edit_text(
-        localize("payments.replenish_prompt", currency=EnvKeys.PAY_CURRENCY),
-        reply_markup=back('profile')
-    )
+    text = localize("payments.replenish_prompt", currency=EnvKeys.PAY_CURRENCY)
+    if hasattr(target, 'message'):
+        await target.message.edit_text(text, reply_markup=back('profile'))
+    else:
+        await target.answer(text, reply_markup=back('profile'))
     await state.set_state(BalanceStates.waiting_amount)
 
 

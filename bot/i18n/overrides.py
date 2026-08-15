@@ -47,7 +47,6 @@
         "4. Choose direct transfer or bank account.\n"
         "5. Transfer the exact amount shown by the bot.\n"
         "6. Wait for delivery after payment is confirmed.\n\n"
-        "🌐 Need another language? Tap \"Language\" to switch English / Vietnamese.\n\n"
         "📌 Please choose a menu:"
     ),
     "profile.caption": "👤 <b>Profile</b> — <a href='tg://user?id={id}'>{name}</a>",
@@ -57,11 +56,13 @@
     "language.changed": "✅ Language changed: {locale}",
     "language.name.vi": "Tiếng Việt",
     "language.name.en": "English",
-    "commands.start": "Start the bot",
-    "commands.menu": "Open the main menu",
-    "commands.profile": "Open your profile",
-    "commands.rules": "Show the rules",
-    "commands.help": "Show help",
+    "commands.start": "🚀 Start bot",
+    "commands.shop": "🛍️ Shop",
+    "commands.profile": "👤 My profile",
+    "commands.orders": "📦 My orders",
+    "commands.balance": "💰 Balance & Top up",
+    "commands.rules": "📜 Rules",
+    "commands.help": "❓ Help",
     "help.text": (
         "📘 <b>User Guide</b>\n\n"
         "How to buy:\n"
@@ -73,11 +74,13 @@
         "6. Wait for delivery.\n\n"
         "Useful commands:\n"
         "/start — start the bot\n"
-        "/menu — open the main menu\n"
-        "/profile — view your balance and purchases\n"
+        "/shop — open the shop\n"
+        "/profile — view your profile\n"
+        "/orders — view your purchased items\n"
+        "/balance — view balance and top up\n"
         "/rules — show the rules\n"
         "/help — open this guide\n\n"
-        "🌐 To change language, tap \"Language\" in the main menu."
+        "🌐 Switch language with the 🇻🇳 Tiếng Việt / 🇬🇧 English button in the main menu."
     ),
     "subscribe.prompt": "Please subscribe to the news channel first",
     "subscribe.open_channel": "Open Channel",
@@ -272,6 +275,16 @@
     "admin.menu.maintenance_off": "🔧 Maintenance: OFF",
     "admin.maintenance.enabled": "✅ Maintenance mode enabled",
     "admin.maintenance.disabled": "✅ Maintenance mode disabled",
+
+    # === Auto product ad ===
+    "product_ad.title": "🔥 <b>Featured product</b>",
+    "product_ad.name": "📦 <b>{name}</b>",
+    "product_ad.description": "📝 {description}",
+    "product_ad.price": "💰 Price: {amount} {currency}",
+    "product_ad.stock_left": "📦 In stock: {count} pcs",
+    "product_ad.stock_unlimited": "📦 Unlimited stock",
+    "product_ad.buy_cta": "👇 Tap the button below to open the product and buy it!",
+    "product_ad.btn.buy": "🛒 Buy Now",
 }
 EN_TRANSLATIONS.update({
     "admin.shop.logs.file_label": "{name} log file",
@@ -788,6 +801,17 @@ VI_TRANSLATIONS: dict[str, str] = {**_ADMIN_VI_TRANSLATIONS,
     "btn.view_reviews": "📝 Đánh giá ({count})",
     "btn.skip_review_text": "⏭ Bỏ qua nội dung",
     "btn.add_values_finish": "Thêm các hàng hóa đã liệt kê",
+
+    # === Auto product ad ===
+    "product_ad.title": "🔥 <b>Sản phẩm nổi bật</b>",
+    "product_ad.name": "📦 <b>{name}</b>",
+    "product_ad.description": "📝 {description}",
+    "product_ad.price": "💰 Giá: {amount} {currency}",
+    "product_ad.stock_left": "📦 Còn hàng: {count}",
+    "product_ad.stock_unlimited": "📦 Hàng vô hạn",
+    "product_ad.buy_cta": "👇 Nhấn nút bên dưới để mở sản phẩm và mua ngay!",
+    "product_ad.btn.buy": "🛒 Mua Ngay",
+
     "menu.title": (
         "📌 Hướng dẫn nhanh:\n"
         "1. Nhấn \"🛍️ Mua hàng\".\n"
@@ -796,7 +820,6 @@ VI_TRANSLATIONS: dict[str, str] = {**_ADMIN_VI_TRANSLATIONS,
 
         "5. Chuyển đúng số tiền bot hiển thị.\n"
         "6. Chờ bot xử lý sau khi thanh toán được xác nhận.\n\n"
-        "🌐 Muốn đổi ngôn ngữ? Nhấn \"Ngôn ngữ\" để chuyển English / Tiếng Việt.\n\n"
         "📌 Vui lòng chọn menu:"
     ),
     "profile.caption": "👤 <b>Hồ sơ</b> — <a href='tg://user?id={id}'>{name}</a>",
@@ -806,11 +829,13 @@ VI_TRANSLATIONS: dict[str, str] = {**_ADMIN_VI_TRANSLATIONS,
     "language.changed": "✅ Đã đổi ngôn ngữ: {locale}",
     "language.name.vi": "Tiếng Việt",
     "language.name.en": "English",
-    "commands.start": "Khởi động bot",
-    "commands.menu": "Mở menu chính",
-    "commands.profile": "Mở hồ sơ",
-    "commands.rules": "Xem quy định",
-    "commands.help": "Xem trợ giúp",
+    "commands.start": "🚀 Khởi động bot",
+    "commands.shop": "🛍️ Mua hàng",
+    "commands.profile": "👤 Hồ sơ của tôi",
+    "commands.orders": "📦 Đơn hàng đã mua",
+    "commands.balance": "💰 Số dư & Nạp tiền",
+    "commands.rules": "📜 Quy định",
+    "commands.help": "❓ Trợ giúp",
     "help.text": (
         "📘 <b>Hướng dẫn sử dụng</b>\n\n"
         "Cách mua hàng:\n"
@@ -822,11 +847,13 @@ VI_TRANSLATIONS: dict[str, str] = {**_ADMIN_VI_TRANSLATIONS,
         "6. Chờ bot giao hàng.\n\n"
         "Các lệnh hữu ích:\n"
         "/start — khởi động bot\n"
-        "/menu — mở menu chính\n"
-        "/profile — xem số dư và sản phẩm đã mua\n"
+        "/shop — mở cửa hàng\n"
+        "/profile — xem hồ sơ của bạn\n"
+        "/orders — xem đơn hàng đã mua\n"
+        "/balance — xem số dư và nạp tiền\n"
         "/rules — xem quy định\n"
         "/help — mở hướng dẫn này\n\n"
-        "🌐 Muốn đổi ngôn ngữ, nhấn \"Ngôn ngữ\" trong menu chính."
+        "🌐 Đổi ngôn ngữ bằng nút 🇻🇳 Tiếng Việt / 🇬🇧 English trong menu chính."
     ),
     "subscribe.prompt": "Vui lòng đăng ký kênh tin tức trước",
     "subscribe.open_channel": "Mở kênh",

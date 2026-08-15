@@ -1,24 +1,25 @@
 from aiogram import Bot
 from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats
 
+_COMMAND_NAMES = ("start", "shop", "profile", "orders", "balance", "rules", "help")
+
 
 def get_private_commands(locale: str = "en") -> list[BotCommand]:
     from bot.i18n.main import localize_for
 
     return [
-        BotCommand(command="start", description=localize_for(locale, "commands.start")),
-        BotCommand(command="menu", description=localize_for(locale, "commands.menu")),
-        BotCommand(command="profile", description=localize_for(locale, "commands.profile")),
-        BotCommand(command="rules", description=localize_for(locale, "commands.rules")),
-        BotCommand(command="help", description=localize_for(locale, "commands.help")),
+        BotCommand(command=name, description=localize_for(locale, f"commands.{name}"))
+        for name in _COMMAND_NAMES
     ]
 
 
 async def setup_bot_commands(bot: Bot) -> None:
+    # Default scope (any language): English descriptions.
     await bot.set_my_commands(
         commands=get_private_commands("en"),
         scope=BotCommandScopeAllPrivateChats(),
     )
+    # Language-specific overrides: Telegram picks these based on the client language.
     await bot.set_my_commands(
         commands=get_private_commands("en"),
         scope=BotCommandScopeAllPrivateChats(),

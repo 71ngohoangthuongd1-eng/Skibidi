@@ -1,9 +1,10 @@
 import datetime
+import logging
 from typing import Any
 
 from sqlalchemy import (
     Column, Integer, String, BigInteger, ForeignKey, Text, Boolean,
-    DateTime, Numeric, Index, UniqueConstraint, CheckConstraint, func, select
+    DateTime, Numeric, Index, UniqueConstraint, CheckConstraint, func, select, text
 )
 from bot.database.main import Database
 from sqlalchemy.orm import relationship
@@ -187,14 +188,17 @@ class BoughtGoods(Database.BASE):
     buyer_id = Column(BigInteger, ForeignKey('users.telegram_id', ondelete="SET NULL"), nullable=True, index=True)
     bought_datetime = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     unique_id = Column(BigInteger, nullable=False, unique=True)
+    payment_id = Column(Integer, ForeignKey('payments.id', ondelete="SET NULL"), nullable=True, index=True)
     user_telegram_id = relationship("User", back_populates="user_goods", lazy='raise')
 
     __table_args__ = (
         Index('ix_bought_goods_datetime', 'bought_datetime'),
         Index('ix_bought_goods_buyer_datetime', 'buyer_id', 'bought_datetime'),
+        UniqueConstraint('payment_id', name='uq_bought_goods_payment_id'),
     )
 
-    def __init__(self, name: str, value: str, price, bought_datetime, unique_id, buyer_id: int = 0, **kw: Any):
+    def __init__(self, name: str, value: str, price, bought_datetime, unique_id, buyer_id: int = 0,
+                 payment_id=None, **kw: Any):
         super().__init__(**kw)
         self.item_name = name
         self.value = value
@@ -202,6 +206,7 @@ class BoughtGoods(Database.BASE):
         self.buyer_id = buyer_id
         self.bought_datetime = bought_datetime
         self.unique_id = unique_id
+        self.payment_id = payment_id
 
 
 class Operations(Database.BASE):
@@ -231,6 +236,9 @@ class Payments(Database.BASE):
     user_id = Column(BigInteger, ForeignKey('users.telegram_id', ondelete="SET NULL"), nullable=True, index=True)
     amount = Column(Numeric(12, 2), nullable=False)
     currency = Column(String(8), nullable=False)
+    # pending / submitted / succeeded / failed / balance_refunded
+    #   balance_refunded = SePay direct purchase delivered the money to the user's
+    #   balance instead of an item (e.g. out of stock) — a retry must NOT deliver again.
     status = Column(String(16), nullable=False, default="pending")
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
@@ -351,4 +359,28 @@ class Reviews(Database.BASE):
 async def register_models():
     async with Database().engine.begin() as conn:
         await conn.run_sync(Database.BASE.metadata.create_all)
+        # `create_all` never ALTERs an existing table, so on an upgraded DB the
+        # idempotency column would be missing. Repair it (serverless-safe, no-op once done).
+        try:
+            from sqlalchemy import inspect
+            from sqlalchemy.schema import CreateIndex
+
+            inspector = inspect(conn.sync_connection)
+            columns = [c["name"] for c in inspector.get_columns("bought_goods")]
+            if "payment_id" not in columns:
+                await conn.run_sync(
+                    lambda sc: sc.execute(
+                        text(
+                            "ALTER TABLE bought_goods "
+                            "ADD COLUMN payment_id INTEGER REFERENCES payments(id) ON DELETE SET NULL"
+                        )
+                    )
+                )
+                await conn.run_sync(
+                    lambda sc: sc.execute(CreateIndex(
+                        Index("uq_bought_goods_payment_id", BoughtGoods.payment_id, unique=True)
+                    ))
+                )
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Schema repair for bought_goods.payment_id skipped: {e}")
     await Role.insert_roles()

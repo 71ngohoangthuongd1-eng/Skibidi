@@ -1,7 +1,10 @@
+import logging
 import os
 from abc import ABC
 from typing import Final
 from urllib.parse import quote_plus
+
+logger = logging.getLogger(__name__)
 
 
 def is_serverless() -> bool:
@@ -85,6 +88,10 @@ class EnvKeys(ABC):
     DEBUG: Final = _get_optional("DEBUG", "0")
     REVIEWS_ENABLED: Final = _get_optional("REVIEWS_ENABLED", "1")
 
+    # Auto product ad (promo rotation)
+    AUTO_PRODUCT_AD_ENABLED: Final = _get_optional("AUTO_PRODUCT_AD_ENABLED", "0")
+    AUTO_PRODUCT_AD_INTERVAL: Final = int(_get_optional("AUTO_PRODUCT_AD_INTERVAL", "3600"))
+
     # Web admin panel
     ADMIN_HOST: Final = _get_optional("ADMIN_HOST", _get_optional("MONITORING_HOST", "localhost"))
     ADMIN_PORT: Final = int(_get_optional("ADMIN_PORT", _get_optional("MONITORING_PORT", "9090")))
@@ -149,4 +156,12 @@ def validate_production() -> None:
     if errors:
         raise RuntimeError(
             "Invalid production (Vercel) configuration:\n  - " + "\n  - ".join(errors)
+        )
+
+    # 6. Login rate limiting is security-critical: on serverless it requires Redis.
+    if EnvKeys.REDIS_ENABLED != "1":
+        logger.warning(
+            "REDIS_ENABLED=0 on serverless: the admin login rate limiter falls back "
+            "to per-instance memory and can be bypassed across Vercel instances. "
+            "Set REDIS_URL + REDIS_ENABLED=1 for distributed login lockout."
         )

@@ -1,6 +1,7 @@
 import logging
 import time
 from typing import Any
+from uuid import uuid4
 
 from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
@@ -20,15 +21,87 @@ logger = logging.getLogger(__name__)
 
 
 class LoginRateLimiter:
-    """In-memory rate limiter for login attempts by IP."""
+    """Redis-backed login rate limiter for admin logins by IP.
 
-    def __init__(self, max_attempts: int = 5, lockout_seconds: int = 900):
+    Production (Vercel) serves the admin panel from many instances, so the
+    fail-counter MUST live in shared storage — otherwise an attacker can simply
+    rotate between instances/slots. We use a Redis sorted set of failure
+    timestamps per IP (fixed lockout window). When Redis is not configured
+    (``REDIS_ENABLED=0``, local development) it degrades to the historical
+    in-memory registry for a single process.
+    """
+
+    def __init__(self, max_attempts: int = 5, lockout_seconds: int = 900, redis_client=None):
         self.max_attempts = max_attempts
         self.lockout_seconds = lockout_seconds
+        self._prefix = "login:fail"
         self._attempts: dict[str, list[float]] = {}
         self._last_cleanup: float = time.time()
+        self._redis = redis_client
+        self._redis_warned = False
+
+    def _get_redis(self):
+        if self._redis is not None:
+            return self._redis
+        if EnvKeys.REDIS_ENABLED != "1":
+            # Redis explicitly disabled (local development, shared cache off) —
+            # never attempt a connection when the deployment has Redis off;
+            # this also keeps the memory fallback fast in tests.
+            return None
+        # Standalone sync client (this code path is sync, so we cannot reuse the
+        # async shared client). Failures fall back to the in-memory registry.
+        try:
+            import redis as redis_sync
+            from bot.misc.env import is_serverless
+
+            if EnvKeys.REDIS_URL.strip():
+                client = redis_sync.Redis.from_url(
+                    EnvKeys.REDIS_URL.strip(),
+                    socket_connect_timeout=3,
+                    socket_timeout=3,
+                    decode_responses=True,
+                )
+            else:
+                client = redis_sync.Redis(
+                    host=EnvKeys.REDIS_HOST,
+                    port=EnvKeys.REDIS_PORT,
+                    db=EnvKeys.REDIS_DB,
+                    password=EnvKeys.REDIS_PASSWORD or None,
+                    socket_connect_timeout=3,
+                    socket_timeout=3,
+                    decode_responses=True,
+                )
+            client.ping()
+            self._redis = client
+            return self._redis
+        except Exception:
+            if not self._redis_warned:
+                self._redis_warned = True
+                if is_serverless():
+                    logger.warning(
+                        "LoginRateLimiter: Redis unavailable on serverless — login "
+                        "locking is per-instance only, and can be bypassed across "
+                        "Vercel instances. Configure REDIS_URL/REDIS_ENABLED=1."
+                    )
+                else:
+                    logger.info("LoginRateLimiter: Redis not available, using in-memory fallback")
+            return None
+
+    @staticmethod
+    def _key(prefix: str, ip: str) -> str:
+        return f"{prefix}:{ip}"
 
     def is_blocked(self, ip: str) -> bool:
+        redis = self._get_redis()
+        if redis is not None:
+            try:
+                window = time.time() - self.lockout_seconds
+                key = self._key(self._prefix, ip)
+                redis.zremrangebyscore(key, 0, window)
+                count = redis.zcard(key)
+                return int(count) >= self.max_attempts
+            except Exception:
+                pass  # Redis hiccup → fall through to the in-memory registry
         if ip not in self._attempts:
             return False
         now = time.time()
@@ -36,7 +109,20 @@ class LoginRateLimiter:
         return len(self._attempts[ip]) >= self.max_attempts
 
     def record_failure(self, ip: str) -> None:
+        redis = self._get_redis()
         now = time.time()
+        if redis is not None:
+            try:
+                window = now - self.lockout_seconds
+                key = self._key(self._prefix, ip)
+                redis.zremrangebyscore(key, 0, window)
+                # Unique member per failure: timestamps alone can collide inside
+                # one clock tick (esp. Windows), which would overwrite the counter.
+                redis.zadd(key, {f"{now}.{uuid4().hex}": now})
+                redis.expire(key, self.lockout_seconds + 60)
+                return
+            except Exception:
+                pass  # fall back to memory so a Redis hiccup never blocks login
         if now - self._last_cleanup > 600:
             self._attempts = {
                 k: [t for t in v if now - t < self.lockout_seconds]
@@ -49,6 +135,12 @@ class LoginRateLimiter:
         self._attempts[ip].append(now)
 
     def reset(self, ip: str) -> None:
+        redis = self._get_redis()
+        if redis is not None:
+            try:
+                redis.delete(self._key(self._prefix, ip))
+            except Exception:
+                pass
         self._attempts.pop(ip, None)
 
 

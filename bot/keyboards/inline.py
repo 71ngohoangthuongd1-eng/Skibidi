@@ -2,6 +2,7 @@ from typing import Callable, Iterable, Tuple
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from bot.i18n import localize, localize_for
+from bot.i18n.main import get_locale
 from bot.database.models import Permission
 from bot.misc import LazyPaginator # noqa: F401
 from bot.misc import EnvKeys
@@ -15,7 +16,12 @@ def main_menu(role: int, channel: str | None = None, helper: str | None = None) 
     kb.button(text=localize("btn.shop"), callback_data="shop")
     kb.button(text=localize("btn.rules"), callback_data="rules")
     kb.button(text=localize("btn.profile"), callback_data="profile")
-    kb.button(text=localize("btn.language"), callback_data="language_menu")
+    current = get_locale()
+    if current == "en":
+        toggle_label, toggle_cb = "🇻🇳 Tiếng Việt", "lang_set:vi"
+    else:
+        toggle_label, toggle_cb = "🇬🇧 English", "lang_set:en"
+    kb.button(text=toggle_label, callback_data=toggle_cb)
     if helper:
         kb.button(text=localize("btn.support"), url=f"tg://user?id={helper}")
     if channel:

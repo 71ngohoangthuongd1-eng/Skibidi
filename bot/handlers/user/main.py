@@ -15,7 +15,6 @@ from bot.database.methods.read import get_cart_count
 from bot.database.methods.lazy_queries import query_user_operations_history
 from bot.handlers.other import check_sub_channel, _parse_channel_username
 from bot.keyboards import main_menu, back, profile_keyboard, check_sub
-from bot.keyboards.inline import simple_buttons, lazy_paginated_keyboard
 from bot.misc import EnvKeys
 from bot.misc.metrics import get_metrics
 from bot.i18n import localize
@@ -172,20 +171,6 @@ async def help_command_handler(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(localize("help.text"), reply_markup=back("back_to_menu"))
     await message.delete()
-
-
-@router.callback_query(F.data == "language_menu")
-async def language_menu_handler(call: CallbackQuery, state: FSMContext):
-    buttons = [
-        ("🇻🇳 Tiếng Việt", "lang_set:vi"),
-        ("🇺🇸 English", "lang_set:en"),
-        (localize("btn.back"), "back_to_menu"),
-    ]
-    await call.message.edit_text(
-        localize("language.title"),
-        reply_markup=simple_buttons(buttons, per_row=1),
-    )
-    await state.clear()
 
 
 @router.callback_query(F.data.startswith("lang_set:"))

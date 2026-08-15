@@ -201,6 +201,29 @@ async def cron_cleanup(request: Request) -> JSONResponse:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
+async def cron_product_ad(request: Request) -> JSONResponse:
+    """Send one auto product-ad pass (invoked by Vercel Cron). Idempotent + locked.
+
+    The manager re-checks AUTO_PRODUCT_AD_ENABLED and the interval guard itself,
+    so duplicate triggers (extra cron instance / manual call) are harmless.
+    """
+    if not _verify_cron_secret(request):
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    if not await _cron_lock("product-ad"):
+        return JSONResponse({"ok": False, "error": "already running"}, status_code=409)
+    try:
+        from bot.misc.services.product_ad import ProductAdManager
+
+        rt = await _ensure_runtime()
+        pam = ProductAdManager(bot=rt["bot"])
+        pam.running = False  # single pass, no loop
+        report = await pam.run_once()
+        return JSONResponse(report)
+    except Exception as e:
+        logger.error(f"Cron product-ad failed: {e}", exc_info=True)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 webhook_path = EnvKeys.WEBHOOK_PATH or "/webhook"
 
 admin_app.state.ensure_runtime = _ensure_runtime
@@ -211,6 +234,7 @@ app = Starlette(
         Route("/api/set-webhook", set_webhook_handler, methods=["GET", "POST"]),
         Route("/api/cron/recovery", cron_recovery, methods=["GET", "POST"]),
         Route("/api/cron/cleanup", cron_cleanup, methods=["GET", "POST"]),
+        Route("/api/cron/product-ad", cron_product_ad, methods=["GET", "POST"]),
         Mount("/", app=admin_app),
     ]
 )
