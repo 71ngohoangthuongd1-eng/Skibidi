@@ -12,8 +12,8 @@ from bot.database.methods import (
     get_user_referral, buy_item_transaction, process_payment_with_referral,
     create_pending_payment, get_item_info_cached,
 )
-from bot.keyboards import back, payment_menu, close, get_payment_choice, vietqr_menu, vietqr_confirm_menu, \
-    owner_vietqr_review_menu, simple_buttons, direct_purchase_choice
+from bot.keyboards import back, payment_menu, close, get_payment_choice, sepay_menu, sepay_confirm_menu, \
+    simple_buttons, direct_purchase_choice
 from bot.logger_mesh import logger
 from bot.database.methods.audit import log_audit
 from bot.misc import EnvKeys, ItemPurchaseRequest, validate_telegram_id, validate_money_amount, PaymentRequest, \
@@ -21,7 +21,7 @@ from bot.misc import EnvKeys, ItemPurchaseRequest, validate_telegram_id, validat
 from bot.handlers.other import _any_payment_method_enabled, is_safe_item_name
 from bot.misc.metrics import get_metrics
 from bot.misc.services import CryptoPayAPI, CryptoPayAPIError, send_stars_invoice, send_fiat_invoice, \
-    is_vietqr_configured, convert_balance_amount_to_vnd, build_vietqr_url
+    is_sepay_configured, convert_balance_amount_to_vnd, build_sepay_transfer_content
 from bot.misc.services.payment import _minor_units_for
 from bot.filters import ValidAmountFilter
 from bot.i18n import localize, localize_for
@@ -63,7 +63,7 @@ def _owner_locale() -> str | None:
 
 
 def _transfer_content(external_id: str) -> str:
-    return f"TOPUP {external_id}"
+    return build_sepay_transfer_content(external_id)
 
 
 async def _get_payment_by_id(payment_id: int) -> Payments | None:
@@ -79,52 +79,25 @@ async def _set_payment_status(payment_id: int, status: str) -> None:
         )
 
 
-async def _notify_owner_vietqr_review(call: CallbackQuery, payment: Payments) -> None:
-    owner_locale = _owner_locale()
-    amount_vnd = convert_balance_amount_to_vnd(payment.amount)
-    transfer_content = _transfer_content(payment.external_id)
-    bank_name = EnvKeys.VIETQR_BANK_NAME or EnvKeys.VIETQR_BANK_BIN
-    user_name = call.from_user.full_name or call.from_user.first_name
-
-    await call.bot.send_message(
-        EnvKeys.OWNER_ID,
-        localize_for(
-            owner_locale,
-            "payments.vietqr.owner.review",
-            payment_id=payment.id,
-            user_id=payment.user_id,
-            name=user_name,
-            amount=payment.amount,
-            currency=payment.currency,
-            amount_vnd=amount_vnd,
-            bank_name=bank_name,
-            account_no=EnvKeys.VIETQR_ACCOUNT_NO,
-            account_name=EnvKeys.VIETQR_ACCOUNT_NAME,
-            transfer_content=transfer_content,
-        ),
-        reply_markup=owner_vietqr_review_menu(payment.id, owner_locale),
-    )
+def _sepay_bank_name() -> str:
+    return EnvKeys.SEPAY_BANK_NAME or EnvKeys.SEPAY_ACCOUNT_NO
 
 
-def _vietqr_bank_name() -> str:
-    return EnvKeys.VIETQR_BANK_NAME or EnvKeys.VIETQR_BANK_BIN
-
-
-def _vietqr_account_name_line(locale: str | None = None) -> str:
-    if not EnvKeys.VIETQR_ACCOUNT_NAME:
+def _sepay_account_name_line(locale: str | None = None) -> str:
+    if not EnvKeys.SEPAY_ACCOUNT_NAME:
         return ""
-    return localize_for(locale, "payments.vietqr.account_name_line", account_name=EnvKeys.VIETQR_ACCOUNT_NAME)
+    return localize_for(locale, "payments.sepay.account_name_line", account_name=EnvKeys.SEPAY_ACCOUNT_NAME)
 
 
-def _vietqr_context(payment: Payments, locale: str | None = None) -> dict:
+def _sepay_context(payment: Payments, locale: str | None = None) -> dict:
     return {
         "amount": payment.amount,
         "currency": payment.currency,
         "amount_vnd": convert_balance_amount_to_vnd(payment.amount),
-        "bank_name": _vietqr_bank_name(),
-        "account_no": EnvKeys.VIETQR_ACCOUNT_NO,
-        "account_name": EnvKeys.VIETQR_ACCOUNT_NAME,
-        "account_name_line": _vietqr_account_name_line(locale),
+        "bank_name": _sepay_bank_name(),
+        "account_no": EnvKeys.SEPAY_ACCOUNT_NO,
+        "account_name": EnvKeys.SEPAY_ACCOUNT_NAME,
+        "account_name_line": _sepay_account_name_line(locale),
         "transfer_content": _transfer_content(payment.external_id),
     }
 
@@ -134,6 +107,153 @@ async def _edit_message_content(message, *, text: str, reply_markup):
         await message.edit_caption(caption=text, reply_markup=reply_markup)
     else:
         await message.edit_text(text, reply_markup=reply_markup)
+
+
+def _extract_sepay_amount(payload: dict) -> Decimal:
+    raw_amount = payload.get("transferAmount")
+    if raw_amount is None:
+        raw_amount = payload.get("amount")
+    if raw_amount is None:
+        raw_amount = payload.get("order", {}).get("order_amount")
+    return Decimal(str(raw_amount or "0"))
+
+
+def _extract_sepay_code(payload: dict) -> str:
+    for key in ("payment_code", "code"):
+        value = payload.get(key)
+        if value:
+            return str(value).strip()
+    content = payload.get("content") or payload.get("description") or payload.get("order", {}).get("order_invoice_number")
+    return str(content).strip() if content else ""
+
+
+def _normalize_sepay_code(code: str) -> str:
+    prefix = (EnvKeys.SEPAY_PAYMENT_PREFIX or "SP").strip().upper()
+    normalized = (code or "").strip().upper()
+    if prefix and normalized.startswith(prefix):
+        return normalized[len(prefix):]
+    return normalized
+
+
+async def handle_sepay_ipn(payload: dict, bot) -> None:
+    """
+    Process a SePay IPN event and finalize the matching pending payment.
+    """
+    transfer_type = (payload.get("transfer_type") or payload.get("transferType") or "").lower()
+    if transfer_type not in {"credit", "in"}:
+        return
+
+    amount = _extract_sepay_amount(payload)
+    if amount <= 0:
+        return
+
+    code = _extract_sepay_code(payload)
+    if not code:
+        return
+    normalized_code = _normalize_sepay_code(code)
+
+    async with Database().session() as s:
+        payment = (await s.execute(
+            select(Payments).where(
+                Payments.provider.in_(("sepay", "sepay_item")),
+                Payments.external_id == normalized_code,
+                Payments.status.in_(("pending", "submitted")),
+            )
+        )).scalars().first()
+
+    if not payment:
+        await log_audit(
+            "sepay_ipn_unmatched",
+            level="WARNING",
+            resource_type="Payment",
+            details=f"code={code}, normalized={normalized_code}, amount={amount}, payload={payload}",
+        )
+        return
+
+    expected_amount = Decimal(str(payment.amount))
+    if amount != expected_amount:
+        await log_audit(
+            "sepay_ipn_amount_mismatch",
+            level="WARNING",
+            user_id=payment.user_id,
+            resource_type="Payment",
+            resource_id=str(payment.id),
+            details=f"expected={expected_amount}, got={amount}, code={code}",
+        )
+        return
+
+    referral_percent = EnvKeys.REFERRAL_PERCENT if payment.provider == "sepay" else 0
+    success, error_msg = await process_payment_with_referral(
+        user_id=payment.user_id,
+        amount=expected_amount,
+        provider=payment.provider,
+        external_id=payment.external_id,
+        referral_percent=referral_percent,
+    )
+    if not success:
+        await log_audit(
+            "sepay_ipn_process_failed",
+            level="WARNING",
+            user_id=payment.user_id,
+            resource_type="Payment",
+            resource_id=str(payment.id),
+            details=f"provider={payment.provider}, error={error_msg}",
+        )
+        return
+
+    if payment.provider == "sepay":
+        amount_int = int(expected_amount.quantize(Decimal("1."), rounding=ROUND_HALF_UP))
+        try:
+            user_info = await bot.get_chat(payment.user_id)
+            payer_name = user_info.full_name or user_info.first_name
+        except Exception:
+            payer_name = str(payment.user_id)
+
+        await _notify_referrer_bonus(bot, payment.user_id, amount_int, payer_name, payment.user_id)
+
+        try:
+            user_locale = get_user_locale(payment.user_id)
+            await bot.send_message(
+                payment.user_id,
+                localize_for(
+                    user_locale,
+                    "payments.sepay.approved",
+                    amount=payment.amount,
+                    currency=payment.currency,
+                ),
+                reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]),
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify user {payment.user_id} about approved SePay payment: {e}")
+
+        return
+
+    intent = get_direct_purchase_intent(payment.id)
+    if payment.provider == "sepay_item" and intent:
+        purchase_success, purchase_message, purchase_data = await buy_item_transaction(
+            payment.user_id,
+            intent["item_name"],
+            promo_code=intent.get("promo_code"),
+        )
+        if purchase_success:
+            await _send_direct_purchase_receipt(bot, payment.user_id, purchase_data)
+        else:
+            try:
+                user_locale = get_user_locale(payment.user_id)
+                await bot.send_message(
+                    payment.user_id,
+                    localize_for(
+                        user_locale,
+                        "shop.direct_purchase.approved_balance_only",
+                        reason=purchase_message,
+                        amount=payment.amount,
+                        currency=payment.currency,
+                    ),
+                    reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]),
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify user {payment.user_id} about SePay direct purchase fallback: {e}")
+        delete_direct_purchase_intent(payment.id)
 
 
 def _price_with_promo(raw_price: Decimal, state_data: dict) -> Decimal:
@@ -161,7 +281,7 @@ async def _create_or_reuse_direct_purchase_payment(
         if (
             payment
             and payment.user_id == user_id
-            and payment.provider == "vietqr_item"
+            and payment.provider == "sepay_item"
             and payment.status in {"pending", "submitted"}
             and intent
             and intent.get("item_name") == item_name
@@ -171,7 +291,7 @@ async def _create_or_reuse_direct_purchase_payment(
             return payment
 
     payment_id = await create_pending_payment(
-        provider="vietqr_item",
+        provider="sepay_item",
         external_id=uuid.uuid4().hex[:10].upper(),
         user_id=user_id,
         amount=float(amount),
@@ -184,24 +304,6 @@ async def _create_or_reuse_direct_purchase_payment(
         direct_purchase_promo=promo_code,
     )
     return await _get_payment_by_id(payment_id)
-
-
-async def _notify_owner_direct_purchase_review(call: CallbackQuery, payment: Payments, item_name: str) -> None:
-    owner_locale = _owner_locale()
-    context = _vietqr_context(payment, owner_locale)
-    await call.bot.send_message(
-        EnvKeys.OWNER_ID,
-        localize_for(
-            owner_locale,
-            "shop.direct_purchase.owner.review",
-            payment_id=payment.id,
-            user_id=payment.user_id,
-            name=call.from_user.full_name or call.from_user.first_name,
-            item_name=item_name,
-            **context,
-        ),
-        reply_markup=owner_vietqr_review_menu(payment.id, owner_locale),
-    )
 
 
 async def _send_direct_purchase_receipt(bot, user_id: int, purchase_data: dict):
@@ -298,7 +400,7 @@ async def invalid_amount(message: Message, state: FSMContext):
 
 @router.callback_query(
     BalanceStates.waiting_payment,
-    F.data.in_(["pay_vietqr", "pay_usdt", "pay_cryptopay", "pay_stars", "pay_fiat"])
+    F.data.in_(["pay_sepay", "pay_usdt", "pay_cryptopay", "pay_stars", "pay_fiat"])
 )
 async def process_replenish_balance(call: CallbackQuery, state: FSMContext):
     """Create an invoice for the chosen payment method."""
@@ -313,7 +415,7 @@ async def process_replenish_balance(call: CallbackQuery, state: FSMContext):
 
     # Map callback data to provider
     provider_map = {
-        "pay_vietqr": "vietqr",
+        "pay_sepay": "sepay",
         "pay_usdt": "usdt",
         "pay_cryptopay": "cryptopay",
         "pay_stars": "stars",
@@ -332,9 +434,9 @@ async def process_replenish_balance(call: CallbackQuery, state: FSMContext):
         amount_dec = payment_request.amount
         ttl_seconds = int(EnvKeys.PAYMENT_TIME)
 
-        if call.data == "pay_vietqr":
-            if not is_vietqr_configured():
-                await call.answer(localize("payments.vietqr.not_configured"), show_alert=True)
+        if call.data == "pay_sepay":
+            if not is_sepay_configured():
+                await call.answer(localize("payments.sepay.not_configured"), show_alert=True)
                 return
 
             external_id = uuid.uuid4().hex[:10].upper()
@@ -349,14 +451,8 @@ async def process_replenish_balance(call: CallbackQuery, state: FSMContext):
             await state.update_data(payment_id=payment_id, payment_type=provider)
 
             await call.message.edit_text(
-                localize(
-                    "payments.vietqr.choose_option",
-                    amount=amount_dec,
-                    currency=payment_request.currency,
-                    bank_name=_vietqr_bank_name(),
-                    account_no=EnvKeys.VIETQR_ACCOUNT_NO,
-                ),
-                reply_markup=vietqr_menu(payment_id),
+                localize("payments.sepay.instructions", **_sepay_context(await _get_payment_by_id(payment_id))),
+                reply_markup=sepay_menu(payment_id),
             )
 
         elif call.data in {"pay_cryptopay", "pay_usdt"}:
@@ -446,9 +542,9 @@ async def process_replenish_balance(call: CallbackQuery, state: FSMContext):
         await call.answer(localize("errors.something_wrong"), show_alert=True)
 
 
-@router.callback_query(F.data.startswith("vietqr_show_qr:"))
-async def vietqr_show_qr_callback_handler(call: CallbackQuery):
-    """Show the QR payment instruction for an existing VietQR request."""
+@router.callback_query(F.data.startswith("sepay_show_account:"))
+async def sepay_show_account_callback_handler(call: CallbackQuery):
+    """Show the SePay transfer details for an existing payment."""
     try:
         payment_id = int(call.data.split(":", maxsplit=1)[1])
     except (IndexError, ValueError):
@@ -456,48 +552,20 @@ async def vietqr_show_qr_callback_handler(call: CallbackQuery):
         return
 
     payment = await _get_payment_by_id(payment_id)
-    if not payment or payment.provider != "vietqr" or payment.user_id != call.from_user.id:
-        await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
-    context = _vietqr_context(payment)
-    qr_url = build_vietqr_url(
-        amount_vnd=context["amount_vnd"],
-        transfer_content=context["transfer_content"],
-    )
-
-    await call.message.answer_photo(
-        photo=qr_url,
-        caption=localize("payments.vietqr.instructions", **context),
-        reply_markup=vietqr_menu(payment_id),
-    )
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("vietqr_show_account:"))
-async def vietqr_show_account_callback_handler(call: CallbackQuery):
-    """Show manual bank account details for an existing VietQR request."""
-    try:
-        payment_id = int(call.data.split(":", maxsplit=1)[1])
-    except (IndexError, ValueError):
-        await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
-    payment = await _get_payment_by_id(payment_id)
-    if not payment or payment.provider != "vietqr" or payment.user_id != call.from_user.id:
+    if not payment or payment.provider not in {"sepay", "sepay_item"} or payment.user_id != call.from_user.id:
         await call.answer(localize("errors.invalid_data"), show_alert=True)
         return
 
     await call.message.answer(
-        localize("payments.vietqr.account_info", **_vietqr_context(payment)),
-        reply_markup=vietqr_menu(payment_id),
+        localize("payments.sepay.instructions", **_sepay_context(payment)),
+        reply_markup=sepay_menu(payment_id),
     )
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("vietqr_done:"))
-async def vietqr_done_callback_handler(call: CallbackQuery, state: FSMContext):
-    """Mark VietQR payment as submitted and send it to owner for review."""
+@router.callback_query(F.data.startswith("sepay_done:"))
+async def sepay_done_callback_handler(call: CallbackQuery, state: FSMContext):
+    """Mark a SePay payment as submitted so webhook matching can finalize it."""
     try:
         payment_id = int(call.data.split(":", maxsplit=1)[1])
     except (IndexError, ValueError):
@@ -505,7 +573,7 @@ async def vietqr_done_callback_handler(call: CallbackQuery, state: FSMContext):
         return
 
     payment = await _get_payment_by_id(payment_id)
-    if not payment or payment.provider != "vietqr" or payment.user_id != call.from_user.id:
+    if not payment or payment.provider != "sepay" or payment.user_id != call.from_user.id:
         await call.answer(localize("errors.invalid_data"), show_alert=True)
         return
 
@@ -513,37 +581,24 @@ async def vietqr_done_callback_handler(call: CallbackQuery, state: FSMContext):
         await call.answer(localize("payments.already_processed"), show_alert=True)
         return
 
-    if payment.status == "submitted":
-        await call.answer(localize("payments.vietqr.already_submitted"), show_alert=True)
-        return
-
     await _set_payment_status(payment_id, "submitted")
-    payment = await _get_payment_by_id(payment_id)
-
-    try:
-        await _notify_owner_vietqr_review(call, payment)
-    except (TelegramBadRequest, TelegramForbiddenError) as e:
-        logger.error(f"Failed to notify owner about VietQR payment {payment_id}: {e}")
-        await _set_payment_status(payment_id, "pending")
-        await call.answer(localize("errors.something_wrong"), show_alert=True)
-        return
 
     await state.clear()
     await _edit_message_content(
         call.message,
         text=localize(
-            "payments.vietqr.submitted",
+            "payments.sepay.submitted",
             amount=payment.amount,
             currency=payment.currency,
         ),
         reply_markup=back("profile"),
     )
-    await call.answer(localize("payments.vietqr.submitted_alert"))
+    await call.answer(localize("payments.sepay.submitted_alert"))
 
 
-@router.callback_query(F.data.in_(["buy_direct_qr", "buy_direct_account"]))
-async def buy_direct_vietqr_callback_handler(call: CallbackQuery, state: FSMContext):
-    """Create or reuse a direct-purchase bank transfer request for the current item."""
+@router.callback_query(F.data.in_(["buy_direct_account"]))
+async def buy_direct_sepay_callback_handler(call: CallbackQuery, state: FSMContext):
+    """Create or reuse a direct-purchase SePay transfer request for the current item."""
     data = await state.get_data()
     item_name = data.get("csrf_item")
     if not item_name:
@@ -568,80 +623,19 @@ async def buy_direct_vietqr_callback_handler(call: CallbackQuery, state: FSMCont
     )
     context = {
         "item_name": item_name,
-        **_vietqr_context(payment),
+        **_sepay_context(payment),
     }
 
-    if call.data == "buy_direct_qr":
-        qr_url = build_vietqr_url(
-            amount_vnd=context["amount_vnd"],
-            transfer_content=context["transfer_content"],
-        )
-        await call.message.answer_photo(
-            photo=qr_url,
-            caption=localize("shop.direct_purchase.instructions", **context),
-            reply_markup=vietqr_confirm_menu(payment.id, callback_prefix="item_vietqr", back_cb="back_to_item"),
-        )
-    else:
-        await call.message.answer(
-            localize("shop.direct_purchase.account_info", **context),
-            reply_markup=vietqr_confirm_menu(payment.id, callback_prefix="item_vietqr", back_cb="back_to_item"),
-        )
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("item_vietqr_show_qr:"))
-async def item_vietqr_show_qr_callback_handler(call: CallbackQuery):
-    """Show QR again for a direct-purchase transfer."""
-    try:
-        payment_id = int(call.data.split(":", maxsplit=1)[1])
-    except (IndexError, ValueError):
-        await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
-    payment = await _get_payment_by_id(payment_id)
-    intent = get_direct_purchase_intent(payment_id)
-    if not payment or payment.provider != "vietqr_item" or payment.user_id != call.from_user.id or not intent:
-        await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
-    context = {"item_name": intent["item_name"], **_vietqr_context(payment)}
-    qr_url = build_vietqr_url(
-        amount_vnd=context["amount_vnd"],
-        transfer_content=context["transfer_content"],
-    )
-    await call.message.answer_photo(
-        photo=qr_url,
-        caption=localize("shop.direct_purchase.instructions", **context),
-        reply_markup=vietqr_confirm_menu(payment_id, callback_prefix="item_vietqr", back_cb="back_to_item"),
-    )
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("item_vietqr_show_account:"))
-async def item_vietqr_show_account_callback_handler(call: CallbackQuery):
-    """Show bank account info again for a direct-purchase transfer."""
-    try:
-        payment_id = int(call.data.split(":", maxsplit=1)[1])
-    except (IndexError, ValueError):
-        await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
-    payment = await _get_payment_by_id(payment_id)
-    intent = get_direct_purchase_intent(payment_id)
-    if not payment or payment.provider != "vietqr_item" or payment.user_id != call.from_user.id or not intent:
-        await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
     await call.message.answer(
-        localize("shop.direct_purchase.account_info", item_name=intent["item_name"], **_vietqr_context(payment)),
-        reply_markup=vietqr_confirm_menu(payment_id, callback_prefix="item_vietqr", back_cb="back_to_item"),
+        localize("shop.direct_purchase.instructions", **context),
+        reply_markup=sepay_confirm_menu(payment.id, callback_prefix="item_sepay", back_cb="back_to_item"),
     )
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("item_vietqr_done:"))
-async def item_vietqr_done_callback_handler(call: CallbackQuery):
-    """Submit a direct-purchase transfer for owner review."""
+@router.callback_query(F.data.startswith("item_sepay_done:"))
+async def item_sepay_done_callback_handler(call: CallbackQuery):
+    """Acknowledge a direct-purchase transfer; SePay will confirm automatically."""
     try:
         payment_id = int(call.data.split(":", maxsplit=1)[1])
     except (IndexError, ValueError):
@@ -650,26 +644,8 @@ async def item_vietqr_done_callback_handler(call: CallbackQuery):
 
     payment = await _get_payment_by_id(payment_id)
     intent = get_direct_purchase_intent(payment_id)
-    if not payment or payment.provider != "vietqr_item" or payment.user_id != call.from_user.id or not intent:
+    if not payment or payment.provider != "sepay_item" or payment.user_id != call.from_user.id or not intent:
         await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
-    if payment.status == "succeeded":
-        await call.answer(localize("payments.already_processed"), show_alert=True)
-        return
-    if payment.status == "submitted":
-        await call.answer(localize("payments.vietqr.already_submitted"), show_alert=True)
-        return
-
-    await _set_payment_status(payment_id, "submitted")
-    payment = await _get_payment_by_id(payment_id)
-
-    try:
-        await _notify_owner_direct_purchase_review(call, payment, intent["item_name"])
-    except (TelegramBadRequest, TelegramForbiddenError) as e:
-        logger.error(f"Failed to notify owner about direct purchase {payment_id}: {e}")
-        await _set_payment_status(payment_id, "pending")
-        await call.answer(localize("errors.something_wrong"), show_alert=True)
         return
 
     await _edit_message_content(
@@ -683,214 +659,6 @@ async def item_vietqr_done_callback_handler(call: CallbackQuery):
         reply_markup=back("back_to_item"),
     )
     await call.answer(localize("shop.direct_purchase.submitted_alert"))
-
-
-@router.callback_query(F.data.startswith("vietqr_approve:"))
-async def vietqr_approve_callback_handler(call: CallbackQuery):
-    """Approve a submitted VietQR payment and credit user balance."""
-    if call.from_user.id != EnvKeys.OWNER_ID:
-        await call.answer(localize("middleware.security.not_admin"), show_alert=True)
-        return
-
-    try:
-        payment_id = int(call.data.split(":", maxsplit=1)[1])
-    except (IndexError, ValueError):
-        await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
-    payment = await _get_payment_by_id(payment_id)
-    if not payment or payment.provider not in {"vietqr", "vietqr_item"}:
-        await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
-    if payment.status == "succeeded":
-        await call.answer(localize("payments.already_processed"), show_alert=True)
-        return
-
-    if payment.status == "failed":
-        await call.answer(localize("payments.vietqr.already_rejected"), show_alert=True)
-        return
-
-    success, error_msg = await process_payment_with_referral(
-        user_id=payment.user_id,
-        amount=Decimal(str(payment.amount)),
-        provider=payment.provider,
-        external_id=payment.external_id,
-        referral_percent=EnvKeys.REFERRAL_PERCENT if payment.provider == "vietqr" else 0,
-    )
-
-    if not success:
-        if error_msg == "already_processed":
-            await call.answer(localize("payments.already_processed"), show_alert=True)
-        else:
-            await call.answer(localize("payments.processing_error"), show_alert=True)
-        return
-
-    if payment.provider == "vietqr":
-        amount_int = int(Decimal(str(payment.amount)).quantize(Decimal("1."), rounding=ROUND_HALF_UP))
-        try:
-            user_info = await call.bot.get_chat(payment.user_id)
-            payer_name = user_info.full_name or user_info.first_name
-        except (TelegramBadRequest, TelegramForbiddenError):
-            payer_name = str(payment.user_id)
-
-        await _notify_referrer_bonus(call.bot, payment.user_id, amount_int, payer_name, payment.user_id)
-
-        try:
-            user_locale = get_user_locale(payment.user_id)
-            await call.bot.send_message(
-                payment.user_id,
-                localize_for(
-                    user_locale,
-                    "payments.vietqr.approved",
-                    amount=payment.amount,
-                    currency=payment.currency,
-                ),
-                reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]),
-            )
-        except (TelegramBadRequest, TelegramForbiddenError) as e:
-            logger.error(f"Failed to notify user {payment.user_id} about approved VietQR payment: {e}")
-
-        await call.message.edit_text(
-            localize_for(
-                _owner_locale(),
-                "payments.vietqr.owner.approved",
-                payment_id=payment.id,
-                user_id=payment.user_id,
-                amount=payment.amount,
-                currency=payment.currency,
-            ),
-            reply_markup=close(),
-        )
-    else:
-        intent = get_direct_purchase_intent(payment_id)
-        item_name = intent["item_name"] if intent else "unknown"
-        purchase_success = False
-        purchase_message = ""
-
-        if intent:
-            purchase_success, purchase_message, purchase_data = await buy_item_transaction(
-                payment.user_id,
-                item_name,
-                promo_code=intent.get("promo_code"),
-            )
-            if purchase_success:
-                await _send_direct_purchase_receipt(call.bot, payment.user_id, purchase_data)
-            else:
-                try:
-                    user_locale = get_user_locale(payment.user_id)
-                    await call.bot.send_message(
-                        payment.user_id,
-                        localize_for(
-                            user_locale,
-                            "shop.direct_purchase.approved_balance_only",
-                            reason=purchase_message,
-                            amount=payment.amount,
-                            currency=payment.currency,
-                        ),
-                        reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]),
-                    )
-                except (TelegramBadRequest, TelegramForbiddenError) as e:
-                    logger.error(f"Failed to notify user {payment.user_id} about direct purchase fallback: {e}")
-            delete_direct_purchase_intent(payment_id)
-
-        await call.message.edit_text(
-            localize_for(
-                _owner_locale(),
-                "shop.direct_purchase.owner.approved",
-                payment_id=payment.id,
-                user_id=payment.user_id,
-                item_name=item_name,
-                amount=payment.amount,
-                currency=payment.currency,
-            ),
-            reply_markup=close(),
-        )
-    await call.answer(localize_for(_owner_locale(), "payments.vietqr.owner.done"))
-
-
-@router.callback_query(F.data.startswith("vietqr_reject:"))
-async def vietqr_reject_callback_handler(call: CallbackQuery):
-    """Reject a submitted VietQR payment."""
-    if call.from_user.id != EnvKeys.OWNER_ID:
-        await call.answer(localize("middleware.security.not_admin"), show_alert=True)
-        return
-
-    try:
-        payment_id = int(call.data.split(":", maxsplit=1)[1])
-    except (IndexError, ValueError):
-        await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
-    payment = await _get_payment_by_id(payment_id)
-    if not payment or payment.provider not in {"vietqr", "vietqr_item"}:
-        await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
-    if payment.status == "succeeded":
-        await call.answer(localize("payments.already_processed"), show_alert=True)
-        return
-
-    await _set_payment_status(payment_id, "failed")
-
-    user_locale = get_user_locale(payment.user_id)
-    if payment.provider == "vietqr":
-        try:
-            await call.bot.send_message(
-                payment.user_id,
-                localize_for(
-                    user_locale,
-                    "payments.vietqr.rejected",
-                    amount=payment.amount,
-                    currency=payment.currency,
-                ),
-                reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]),
-            )
-        except (TelegramBadRequest, TelegramForbiddenError) as e:
-            logger.error(f"Failed to notify user {payment.user_id} about rejected VietQR payment: {e}")
-
-        await call.message.edit_text(
-            localize_for(
-                _owner_locale(),
-                "payments.vietqr.owner.rejected",
-                payment_id=payment.id,
-                user_id=payment.user_id,
-                amount=payment.amount,
-                currency=payment.currency,
-            ),
-            reply_markup=close(),
-        )
-    else:
-        intent = get_direct_purchase_intent(payment_id)
-        item_name = intent["item_name"] if intent else "unknown"
-        delete_direct_purchase_intent(payment_id)
-        try:
-            await call.bot.send_message(
-                payment.user_id,
-                localize_for(
-                    user_locale,
-                    "payments.vietqr.rejected",
-                    amount=payment.amount,
-                    currency=payment.currency,
-                ),
-                reply_markup=simple_buttons([(localize_for(user_locale, "btn.back"), "profile")]),
-            )
-        except (TelegramBadRequest, TelegramForbiddenError) as e:
-            logger.error(f"Failed to notify user {payment.user_id} about rejected direct purchase: {e}")
-
-        await call.message.edit_text(
-            localize_for(
-                _owner_locale(),
-                "shop.direct_purchase.owner.rejected",
-                payment_id=payment.id,
-                user_id=payment.user_id,
-                item_name=item_name,
-                amount=payment.amount,
-                currency=payment.currency,
-            ),
-            reply_markup=close(),
-        )
-    await call.answer(localize_for(_owner_locale(), "payments.vietqr.owner.done"))
 
 
 @router.callback_query(F.data == "check")
@@ -1093,8 +861,8 @@ async def buy_item_callback_handler(call: CallbackQuery, state: FSMContext):
         if not raw_item_name:
             await call.answer(localize("middleware.security.invalid_csrf"), show_alert=True)
             return
-        if not is_vietqr_configured():
-            await call.answer(localize("payments.vietqr.not_configured"), show_alert=True)
+        if not is_sepay_configured():
+            await call.answer(localize("payments.sepay.not_configured"), show_alert=True)
             return
         if not (await check_value(raw_item_name)) and await select_item_values_amount_cached(raw_item_name) <= 0:
             await call.answer(localize("shop.out_of_stock"), show_alert=True)
@@ -1111,8 +879,8 @@ async def buy_item_callback_handler(call: CallbackQuery, state: FSMContext):
                 item_name=raw_item_name,
                 amount=price,
                 currency=EnvKeys.PAY_CURRENCY,
-                bank_name=_vietqr_bank_name(),
-                account_no=EnvKeys.VIETQR_ACCOUNT_NO,
+                bank_name=_sepay_bank_name(),
+                account_no=EnvKeys.SEPAY_ACCOUNT_NO,
             ),
             reply_markup=direct_purchase_choice("back_to_item"),
         )

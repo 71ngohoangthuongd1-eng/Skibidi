@@ -46,8 +46,8 @@ def _any_payment_method_enabled() -> bool:
     cryptopay_ok = bool(EnvKeys.CRYPTO_PAY_TOKEN)
     tg_stars_ok = bool(EnvKeys.STARS_PER_VALUE)
     tg_pay_ok = bool(EnvKeys.TELEGRAM_PROVIDER_TOKEN)
-    vietqr_ok = bool(EnvKeys.VIETQR_BANK_BIN and EnvKeys.VIETQR_ACCOUNT_NO)
-    return cryptopay_ok or tg_stars_ok or tg_pay_ok or vietqr_ok
+    sepay_ok = bool(EnvKeys.SEPAY_BANK_NAME and EnvKeys.SEPAY_ACCOUNT_NO)
+    return cryptopay_ok or tg_stars_ok or tg_pay_ok or sepay_ok
 
 
 def _parse_channel_username() -> str | None:

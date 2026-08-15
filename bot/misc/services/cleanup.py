@@ -47,35 +47,38 @@ class CleanupManager:
             await asyncio.sleep(wait_seconds)
 
             try:
-                from bot.database import Database
-                from bot.database.models.main import AuditLog, Payments
-                from bot.misc.env import EnvKeys
-                from bot.database.methods.audit import log_audit
-
-                audit_cutoff = datetime.now(timezone.utc) - timedelta(days=EnvKeys.AUDIT_RETENTION_DAYS)
-                payments_cutoff = datetime.now(timezone.utc) - timedelta(days=EnvKeys.PAYMENTS_RETENTION_DAYS)
-
-                async with Database().session() as s:
-                    # 1. Delete old audit_log entries
-                    audit_result = await s.execute(
-                        delete(AuditLog).where(AuditLog.timestamp < audit_cutoff)
-                    )
-                    audit_deleted = audit_result.rowcount
-
-                    # 2. Delete old pending/failed payments
-                    payments_result = await s.execute(
-                        delete(Payments).where(
-                            Payments.status.in_(['pending', 'failed']),
-                            Payments.created_at < payments_cutoff
-                        )
-                    )
-                    payments_deleted = payments_result.rowcount
-
-                await log_audit(
-                    "daily_cleanup",
-                    details=f"audit_deleted={audit_deleted}, payments_deleted={payments_deleted}"
-                )
-                logger.info(f"Daily cleanup: audit={audit_deleted}, payments={payments_deleted}")
-
+                await self.cleanup_once()
             except Exception as e:
                 logger.error(f"Daily cleanup failed: {e}", exc_info=True)
+
+    async def cleanup_once(self):
+        """Single cleanup pass. Safe to call from serverless cron endpoints."""
+        from bot.database import Database
+        from bot.database.models.main import AuditLog, Payments
+        from bot.misc.env import EnvKeys
+        from bot.database.methods.audit import log_audit
+
+        audit_cutoff = datetime.now(timezone.utc) - timedelta(days=EnvKeys.AUDIT_RETENTION_DAYS)
+        payments_cutoff = datetime.now(timezone.utc) - timedelta(days=EnvKeys.PAYMENTS_RETENTION_DAYS)
+
+        async with Database().session() as s:
+            # 1. Delete old audit_log entries
+            audit_result = await s.execute(
+                delete(AuditLog).where(AuditLog.timestamp < audit_cutoff)
+            )
+            audit_deleted = audit_result.rowcount
+
+            # 2. Delete old pending/failed payments
+            payments_result = await s.execute(
+                delete(Payments).where(
+                    Payments.status.in_(['pending', 'failed']),
+                    Payments.created_at < payments_cutoff
+                )
+            )
+            payments_deleted = payments_result.rowcount
+
+        await log_audit(
+            "daily_cleanup",
+            details=f"audit_deleted={audit_deleted}, payments_deleted={payments_deleted}"
+        )
+        logger.info(f"Daily cleanup: audit={audit_deleted}, payments={payments_deleted}")

@@ -173,51 +173,39 @@ def payment_menu(pay_url: str) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def vietqr_menu(payment_id: int, callback_prefix: str = "vietqr", back_cb: str = "profile") -> InlineKeyboardMarkup:
+def sepay_menu(payment_id: int, callback_prefix: str = "sepay", back_cb: str = "profile") -> InlineKeyboardMarkup:
     """
-    Buttons for manual bank transfer via VietQR.
+    Buttons for automatic bank transfer via SePay.
     """
     kb = InlineKeyboardBuilder()
-    kb.button(text=localize("btn.pay.vietqr_qr"), callback_data=f"{callback_prefix}_show_qr:{payment_id}")
-    kb.button(text=localize("btn.pay.vietqr_account"), callback_data=f"{callback_prefix}_show_account:{payment_id}")
-    kb.button(text=localize("btn.pay.vietqr_done"), callback_data=f"{callback_prefix}_done:{payment_id}")
+    kb.button(text=localize("btn.pay.sepay_account"), callback_data=f"{callback_prefix}_show_account:{payment_id}")
+    kb.button(text=localize("btn.pay.sepay_done"), callback_data=f"{callback_prefix}_done:{payment_id}")
     kb.button(text=localize("btn.back"), callback_data=back_cb)
-    kb.adjust(2, 1, 1)
+    kb.adjust(1, 1, 1)
     return kb.as_markup()
 
 
-def vietqr_confirm_menu(payment_id: int, callback_prefix: str = "vietqr", back_cb: str = "profile") -> InlineKeyboardMarkup:
+def sepay_confirm_menu(payment_id: int, callback_prefix: str = "sepay", back_cb: str = "profile") -> InlineKeyboardMarkup:
     """
-    Compact VietQR keyboard for the final payment detail step.
+    Compact SePay keyboard for the final payment detail step.
     """
     return simple_buttons(
         [
-            (localize("btn.pay.vietqr_done"), f"{callback_prefix}_done:{payment_id}"),
+            (localize("btn.pay.sepay_done"), f"{callback_prefix}_done:{payment_id}"),
             (localize("btn.back"), back_cb),
         ],
         per_row=1,
     )
 
 
-def owner_vietqr_review_menu(payment_id: int, locale: str | None = None) -> InlineKeyboardMarkup:
-    """
-    Review buttons for owner approval of manual VietQR transfers.
-    """
-    kb = InlineKeyboardBuilder()
-    kb.button(text=localize_for(locale, "btn.admin.payment_approve"), callback_data=f"vietqr_approve:{payment_id}")
-    kb.button(text=localize_for(locale, "btn.admin.payment_reject"), callback_data=f"vietqr_reject:{payment_id}")
-    kb.adjust(2)
-    return kb.as_markup()
-
-
 def direct_purchase_choice(back_cb: str = "back_to_item") -> InlineKeyboardMarkup:
     """
-    Show QR/account options after tapping Buy on an item.
+    Show transfer options after tapping Buy on an item.
     """
     return simple_buttons(
         [
-            (localize("btn.buy_direct_qr"), "buy_direct_qr"),
             (localize("btn.buy_direct_account"), "buy_direct_account"),
+            (localize("btn.pay.sepay_done"), "item_sepay_done"),
             (localize("btn.back"), back_cb),
         ],
         per_row=1,
@@ -230,8 +218,8 @@ def get_payment_choice() -> InlineKeyboardMarkup:
     """
     buttons = []
 
-    if EnvKeys.VIETQR_BANK_BIN and EnvKeys.VIETQR_ACCOUNT_NO:
-        buttons.append((localize("btn.pay.vietqr"), "pay_vietqr"))
+    if EnvKeys.SEPAY_BANK_NAME and EnvKeys.SEPAY_ACCOUNT_NO:
+        buttons.append((localize("btn.pay.sepay"), "pay_sepay"))
     if EnvKeys.CRYPTO_PAY_TOKEN:
         buttons.append((localize("btn.pay.usdt"), "pay_usdt"))
         buttons.append((localize("btn.pay.crypto"), "pay_cryptopay"))

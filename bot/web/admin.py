@@ -371,7 +371,7 @@ async def metrics_json(request: Request) -> JSONResponse:
 
 
 # App Factory
-def create_admin_app() -> Starlette:
+def create_admin_app(bot=None) -> Starlette:
     if "change-me" in EnvKeys.SECRET_KEY.lower():
         logger.warning("SECRET_KEY is using default value! Change it in .env for production")
 
@@ -387,9 +387,36 @@ def create_admin_app() -> Starlette:
         Route("/health", health_check),
         Route("/metrics", metrics_json),
         Route("/metrics/prometheus", prometheus_metrics),
-    ] + export_routes
+] + export_routes
+
+    async def sepay_ipn(request: Request) -> JSONResponse:
+        secret = request.headers.get("X-Secret-Key", "")
+        if EnvKeys.SEPAY_WEBHOOK_SECRET and secret != EnvKeys.SEPAY_WEBHOOK_SECRET:
+            return JSONResponse({"success": False}, status_code=403)
+
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"success": False}, status_code=400)
+
+        bot_instance = getattr(request.app.state, "bot", None)
+        if bot_instance:
+            from bot.handlers.user.balance_and_payment import handle_sepay_ipn
+            import asyncio
+
+            if EnvKeys.WEBHOOK_ENABLED == "1":
+                # Serverless: run before returning the response, otherwise the
+                # function may be frozen and the created task never completes.
+                await handle_sepay_ipn(payload, bot_instance)
+            else:
+                asyncio.create_task(handle_sepay_ipn(payload, bot_instance))
+
+        return JSONResponse({"success": True}, status_code=200)
+
+    routes.append(Route(EnvKeys.SEPAY_IPN_PATH, sepay_ipn, methods=["POST"]))
 
     app = Starlette(routes=routes)
+    app.state.bot = bot
     app.add_middleware(SessionMiddleware, secret_key=EnvKeys.SECRET_KEY, max_age=1800)
 
     auth_backend = AdminAuth(secret_key=EnvKeys.SECRET_KEY)

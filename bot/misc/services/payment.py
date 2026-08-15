@@ -3,7 +3,6 @@ import json
 import math
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
-from urllib.parse import urlencode
 
 from aiogram import Bot
 from aiogram.types import LabeledPrice
@@ -24,9 +23,9 @@ def currency_to_stars(amount_rub: int) -> int:
     return int(math.ceil(float(amount_rub) * EnvKeys.STARS_PER_VALUE))
 
 
-def is_vietqr_configured() -> bool:
-    """Return True when VietQR bank transfer is minimally configured."""
-    return bool(EnvKeys.VIETQR_BANK_BIN and EnvKeys.VIETQR_ACCOUNT_NO)
+def is_sepay_configured() -> bool:
+    """Return True when SePay bank transfer is minimally configured."""
+    return bool(EnvKeys.SEPAY_BANK_NAME and EnvKeys.SEPAY_ACCOUNT_NO)
 
 
 def convert_balance_amount_to_vnd(amount) -> int:
@@ -38,29 +37,32 @@ def convert_balance_amount_to_vnd(amount) -> int:
     if (EnvKeys.PAY_CURRENCY or "").upper() == "VND":
         return int(amount_dec.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
-    rate = Decimal(str(EnvKeys.VIETQR_RATE or "0"))
+    rate = Decimal(str(EnvKeys.SEPAY_RATE or "0"))
     if rate <= 0:
-        raise ValueError("VIETQR_RATE must be positive")
+        raise ValueError("SEPAY_RATE must be positive")
 
     return int((amount_dec * rate).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def build_vietqr_url(*, amount_vnd: int, transfer_content: str) -> str:
-    """Build a VietQR image URL for the configured bank account."""
-    if not is_vietqr_configured():
-        raise RuntimeError("VietQR is not configured")
+def build_sepay_transfer_content(external_id: str) -> str:
+    """Build a unique transfer description/code for SePay matching."""
+    prefix = (EnvKeys.SEPAY_PAYMENT_PREFIX or "SP").strip()
+    external = (external_id or "").strip().upper()
+    if not external:
+        raise ValueError("external_id is required")
+    return f"{prefix}{external}"
 
-    template = EnvKeys.VIETQR_TEMPLATE or "compact2"
-    base = f"https://img.vietqr.io/image/{EnvKeys.VIETQR_BANK_BIN}-{EnvKeys.VIETQR_ACCOUNT_NO}-{template}.png"
-    params_dict = {
-        "amount": int(amount_vnd),
-        "addInfo": transfer_content,
+
+def build_sepay_instruction_context(*, amount: int, external_id: str) -> dict:
+    """Return a minimal context for SePay transfer instructions."""
+    return {
+        "amount": amount,
+        "currency": EnvKeys.PAY_CURRENCY,
+        "bank_name": EnvKeys.SEPAY_BANK_NAME,
+        "account_no": EnvKeys.SEPAY_ACCOUNT_NO,
+        "account_name": EnvKeys.SEPAY_ACCOUNT_NAME,
+        "transfer_content": build_sepay_transfer_content(external_id),
     }
-    if EnvKeys.VIETQR_ACCOUNT_NAME:
-        params_dict["accountName"] = EnvKeys.VIETQR_ACCOUNT_NAME
-
-    params = urlencode(params_dict)
-    return f"{base}?{params}"
 
 
 async def send_stars_invoice(

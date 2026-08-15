@@ -1,4 +1,4 @@
-EN_TRANSLATIONS: dict[str, str] = {
+﻿EN_TRANSLATIONS: dict[str, str] = {
     "btn.shop": "🛍️ Buy",
     "btn.rules": "📜 Rules",
     "btn.profile": "👤 Profile",
@@ -44,7 +44,7 @@ EN_TRANSLATIONS: dict[str, str] = {
         "1. Tap \"🛍️ Buy\".\n"
         "2. Open the product you want.\n"
         "3. Tap \"🛒 Buy\" on the product page.\n"
-        "4. Choose \"📷 Buy With QR\" or \"🏦 Buy To Main Account\".\n"
+        "4. Choose direct transfer or bank account.\n"
         "5. Transfer the exact amount shown by the bot.\n"
         "6. Wait for delivery after payment is confirmed.\n\n"
         "🌐 Need another language? Tap \"Language\" to switch English / Vietnamese.\n\n"
@@ -68,7 +68,7 @@ EN_TRANSLATIONS: dict[str, str] = {
         "1. Open \"🛍️ Buy\".\n"
         "2. Choose a product.\n"
         "3. Tap \"🛒 Buy\".\n"
-        "4. Choose QR or main bank account.\n"
+        "4. Choose direct transfer or bank account.\n"
         "5. Transfer the exact amount shown.\n"
         "6. Wait for delivery.\n\n"
         "Useful commands:\n"
@@ -296,54 +296,175 @@ EN_TRANSLATIONS.update({
 })
 
 EN_TRANSLATIONS.update({
-    "btn.buy_direct_qr": "📷 Buy With QR",
-    "btn.buy_direct_account": "🏦 Buy To Main Account",
-    "btn.pay.vietqr": "🏦 VietQR / Bank Transfer",
-    "btn.pay.vietqr_qr": "📷 Pay With QR",
-    "btn.pay.vietqr_account": "🏦 Main Account",
-    "btn.pay.vietqr_done": "✅ I Have Transferred",
+    "btn.buy_direct_account": "🏦 Direct Transfer",
+    "btn.buy_direct_account": "🏦 Transfer Info",
+    "btn.pay.sepay": "🏦 SePay / Bank Transfer",
+    "btn.pay.sepay_account": "📄 Transfer Details",
+    "btn.pay.sepay_done": "✅ I Have Transferred",
+    "payments.sepay.not_configured": "❌ SePay bank transfer is not configured yet.",
+    "payments.sepay.submitted": (
+        "✅ Transfer request received.\n"
+        "Amount: <code>{amount}</code> {currency}\n"
+        "SePay will confirm it automatically."
+    ),
+    "payments.sepay.submitted_alert": "Waiting for SePay confirmation.",
+    "payments.sepay.already_submitted": "This transfer is already waiting for SePay confirmation.",
+    "payments.sepay.approved": "✅ Your SePay transfer was confirmed. {amount} {currency} has been added to your balance.",
+    "payments.sepay.rejected": "❌ Your SePay transfer was rejected. Please contact support if you already paid.",
+    "payments.sepay.owner.done": "SePay payment updated.",
+    "shop.direct_purchase.choose_option": (
+        "🛍 <b>Direct purchase via SePay</b>\n\n"
+        "Item: <code>{item_name}</code>\n"
+        "Price: <code>{amount}</code> {currency}\n"
+        "Main account: <code>{bank_name}</code> - <code>{account_no}</code>\n\n"
+        "Use the transfer details below. SePay will confirm the payment automatically."
+    ),
+    "shop.direct_purchase.instructions": (
+        "🛍 <b>Direct purchase via SePay</b>\n\n"
+        "Item: <code>{item_name}</code>\n"
+        "Price: <code>{amount}</code> {currency}\n"
+        "Amount to transfer: <code>{amount_vnd}</code> VND\n"
+        "Bank: <code>{bank_name}</code>\n"
+        "Account number: <code>{account_no}</code>\n"
+        "{account_name_line}"
+        "Transfer content: <code>{transfer_content}</code>\n\n"
+        "Send the exact transfer content above. SePay will confirm the order automatically."
+    ),
+    "shop.direct_purchase.account_info": (
+        "🛍 <b>Main account for direct purchase</b>\n\n"
+        "Item: <code>{item_name}</code>\n"
+        "Price: <code>{amount}</code> {currency}\n"
+        "Bank: <code>{bank_name}</code>\n"
+        "Account number: <code>{account_no}</code>\n"
+        "{account_name_line}"
+        "Amount to transfer: <code>{amount_vnd}</code> VND\n"
+        "Transfer content: <code>{transfer_content}</code>\n\n"
+        "After sending money, SePay will confirm the order automatically."
+    ),
+    "shop.direct_purchase.submitted": (
+        "✅ Direct purchase request received.\n"
+        "Item: <code>{item_name}</code>\n"
+        "Amount: <code>{amount}</code> {currency}\n"
+        "SePay will confirm it automatically."
+    ),
+    "shop.direct_purchase.submitted_alert": "Waiting for SePay confirmation.",
+    "shop.direct_purchase.approved_balance_only": (
+        "✅ The payment was confirmed, but the bot could not deliver the item automatically.\n"
+        "Reason: {reason}\n"
+        "{amount} {currency} has been added to your balance. You can use it to buy the item again."
+    ),
+})
+
+VI_TRANSLATIONS: dict[str, str] = {}
+
+VI_TRANSLATIONS.update({
+    "btn.buy_direct_account": "🏦 Chuyển khoản trực tiếp",
+    "btn.buy_direct_account": "🏦 Thông tin chuyển khoản",
+    "btn.pay.sepay": "🏦 SePay / Chuyển khoản",
+    "btn.pay.sepay_account": "📄 Chi tiết chuyển khoản",
+    "btn.pay.sepay_done": "✅ Tôi đã chuyển khoản",
+    "payments.sepay.not_configured": "❌ Chưa cấu hình chuyển khoản SePay.",
+    "payments.sepay.submitted": (
+        "✅ Đã nhận yêu cầu chuyển khoản.\n"
+        "Số tiền: <code>{amount}</code> {currency}\n"
+        "SePay sẽ tự động xác nhận."
+    ),
+    "payments.sepay.submitted_alert": "Đang chờ SePay xác nhận.",
+    "payments.sepay.already_submitted": "Giao dịch này đang chờ SePay xác nhận rồi.",
+    "payments.sepay.approved": "✅ Chuyển khoản SePay của bạn đã được xác nhận. {amount} {currency} đã được cộng vào số dư.",
+    "payments.sepay.rejected": "❌ Chuyển khoản SePay của bạn bị từ chối. Nếu bạn đã thanh toán, hãy liên hệ hỗ trợ.",
+    "payments.sepay.owner.done": "Đã cập nhật trạng thái thanh toán SePay.",
+    "shop.direct_purchase.choose_option": (
+        "🛍 <b>Mua hàng qua SePay</b>\n\n"
+        "Sản phẩm: <code>{item_name}</code>\n"
+        "Giá: <code>{amount}</code> {currency}\n"
+        "TK chính: <code>{bank_name}</code> - <code>{account_no}</code>\n\n"
+        "Dùng thông tin bên dưới, SePay sẽ tự động xác nhận thanh toán."
+    ),
+    "shop.direct_purchase.instructions": (
+        "🛍 <b>Mua hàng qua SePay</b>\n\n"
+        "Sản phẩm: <code>{item_name}</code>\n"
+        "Giá: <code>{amount}</code> {currency}\n"
+        "Số tiền cần chuyển: <code>{amount_vnd}</code> VND\n"
+        "Ngân hàng: <code>{bank_name}</code>\n"
+        "Số tài khoản: <code>{account_no}</code>\n"
+        "{account_name_line}"
+        "Nội dung chuyển khoản: <code>{transfer_content}</code>\n\n"
+        "Hãy gửi đúng nội dung chuyển khoản ở trên. SePay sẽ tự động xác nhận đơn hàng."
+    ),
+    "shop.direct_purchase.account_info": (
+        "🛍 <b>TK chính để mua hàng</b>\n\n"
+        "Sản phẩm: <code>{item_name}</code>\n"
+        "Giá: <code>{amount}</code> {currency}\n"
+        "Ngân hàng: <code>{bank_name}</code>\n"
+        "Số tài khoản: <code>{account_no}</code>\n"
+        "{account_name_line}"
+        "Số tiền cần chuyển: <code>{amount_vnd}</code> VND\n"
+        "Nội dung chuyển khoản: <code>{transfer_content}</code>\n\n"
+        "Sau khi chuyển tiền, SePay sẽ tự động xác nhận đơn hàng."
+    ),
+    "shop.direct_purchase.submitted": (
+        "✅ Đã nhận yêu cầu mua hàng trực tiếp.\n"
+        "Sản phẩm: <code>{item_name}</code>\n"
+        "Số tiền: <code>{amount}</code> {currency}\n"
+        "SePay sẽ tự động xác nhận."
+    ),
+    "shop.direct_purchase.submitted_alert": "Đang chờ SePay xác nhận.",
+    "shop.direct_purchase.approved_balance_only": (
+        "✅ Thanh toán đã được xác nhận, nhưng bot chưa giao được hàng tự động.\n"
+        "Lý do: {reason}\n"
+        "{amount} {currency} đã được cộng vào số dư. Bạn có thể dùng số dư này để mua lại sản phẩm."
+    ),
+})
+
+EN_TRANSLATIONS.update({
+    "btn.buy_direct_account": "🏦 Direct Transfer",
+        "4. Choose direct transfer or bank account.\n"
+    "btn.pay.sepay": "🏦 SePay / Bank Transfer",
+    "btn.pay.sepay_account": "📷 Pay With Details",
+    "btn.pay.sepay_done": "✅ I Have Transferred",
     "btn.admin.payment_approve": "✅ Approve",
     "btn.admin.payment_reject": "❌ Reject",
-    "payments.vietqr.not_configured": "❌ VietQR is not configured yet.",
-    "payments.vietqr.pending_message": "VietQR payment request created below.",
-    "payments.vietqr.choose_option": (
+    "payments.sepay.not_configured": "❌ SePay is not configured yet.",
+    "payments.sepay.pending_message": "SePay payment request created below.",
+    "payments.sepay.choose_option": (
         "🏦 <b>Bank transfer</b>\n\n"
         "Top-up amount: <code>{amount}</code> {currency}\n"
         "Main account: <code>{bank_name}</code> - <code>{account_no}</code>\n\n"
         "Choose one payment option below."
     ),
-    "payments.vietqr.instructions": (
-        "🏦 <b>Bank transfer via VietQR</b>\n\n"
+    "payments.sepay.instructions": (
+        "🏦 <b>Bank transfer via SePay</b>\n\n"
         "Balance top-up: <code>{amount}</code> {currency}\n"
         "Amount to transfer: <code>{amount_vnd}</code> VND\n"
         "Bank: <code>{bank_name}</code>\n"
         "Account number: <code>{account_no}</code>\n"
         "{account_name_line}"
         "Transfer content: <code>{transfer_content}</code>\n\n"
-        "Scan the QR code or transfer manually. After sending money, tap the confirmation button below."
+        "Use the transfer details below or transfer manually. After sending money, tap the confirmation button below."
     ),
-    "payments.vietqr.account_info": (
-        "🏦 <b>Main bank account</b>\n\n"
+    "payments.sepay.account_info": (
+        "4. Choose direct transfer or bank account.\n"
         "Bank: <code>{bank_name}</code>\n"
         "Account number: <code>{account_no}</code>\n"
         "{account_name_line}"
         "Amount to transfer: <code>{amount_vnd}</code> VND\n"
         "Transfer content: <code>{transfer_content}</code>\n\n"
-        "Use this account for manual transfer, then tap the confirmation button."
+        "Use this account for transfer, then tap the confirmation button."
     ),
-    "payments.vietqr.account_name_line": "Account name: <code>{account_name}</code>\n",
-    "payments.vietqr.submitted": (
-        "✅ VietQR payment request submitted.\n"
+    "payments.sepay.account_name_line": "Account name: <code>{account_name}</code>\n",
+    "payments.sepay.submitted": (
+        "✅ SePay payment request submitted.\n"
         "Amount: <code>{amount}</code> {currency}\n"
         "Your transfer is waiting for manual confirmation."
     ),
-    "payments.vietqr.submitted_alert": "Payment sent for confirmation.",
-    "payments.vietqr.already_submitted": "This VietQR payment is already waiting for review.",
-    "payments.vietqr.already_rejected": "This VietQR payment was already rejected.",
-    "payments.vietqr.approved": "✅ Your VietQR transfer was confirmed. {amount} {currency} has been added to your balance.",
-    "payments.vietqr.rejected": "❌ Your VietQR transfer was rejected. Please contact support if you already paid.",
-    "payments.vietqr.owner.review": (
-        "🏦 <b>VietQR transfer review</b>\n\n"
+    "payments.sepay.submitted_alert": "Payment sent for confirmation.",
+    "payments.sepay.already_submitted": "This SePay payment is already waiting for review.",
+    "payments.sepay.already_rejected": "This SePay payment was already rejected.",
+    "payments.sepay.approved": "✅ Your SePay transfer was confirmed. {amount} {currency} has been added to your balance.",
+    "payments.sepay.rejected": "❌ Your SePay transfer was rejected. Please contact support if you already paid.",
+    "payments.sepay.owner.review": (
+        "🏦 <b>SePay transfer review</b>\n\n"
         "Payment ID: <code>{payment_id}</code>\n"
         "User: <a href='tg://user?id={user_id}'>{name}</a> (<code>{user_id}</code>)\n"
         "Balance top-up: <code>{amount}</code> {currency}\n"
@@ -354,19 +475,19 @@ EN_TRANSLATIONS.update({
         "Transfer content: <code>{transfer_content}</code>\n\n"
         "Check your bank app and approve or reject this request."
     ),
-    "payments.vietqr.owner.approved": (
-        "✅ VietQR payment approved.\n"
+    "payments.sepay.owner.approved": (
+        "✅ SePay payment approved.\n"
         "Payment ID: <code>{payment_id}</code>\n"
         "User: <code>{user_id}</code>\n"
         "Credited: <code>{amount}</code> {currency}"
     ),
-    "payments.vietqr.owner.rejected": (
-        "❌ VietQR payment rejected.\n"
+    "payments.sepay.owner.rejected": (
+        "❌ SePay payment rejected.\n"
         "Payment ID: <code>{payment_id}</code>\n"
         "User: <code>{user_id}</code>\n"
         "Requested: <code>{amount}</code> {currency}"
     ),
-    "payments.vietqr.owner.done": "VietQR payment updated.",
+    "payments.sepay.owner.done": "SePay payment updated.",
     "shop.direct_purchase.choose_option": (
         "🛍 <b>Direct purchase</b>\n\n"
         "Item: <code>{item_name}</code>\n"
@@ -383,10 +504,10 @@ EN_TRANSLATIONS.update({
         "Account number: <code>{account_no}</code>\n"
         "{account_name_line}"
         "Transfer content: <code>{transfer_content}</code>\n\n"
-        "Scan the QR code or transfer manually. After sending money, tap the confirmation button below."
+        "Use the transfer details below or transfer manually. After sending money, tap the confirmation button below."
     ),
     "shop.direct_purchase.account_info": (
-        "🛍 <b>Main bank account for direct purchase</b>\n\n"
+        "4. Choose direct transfer or bank account.\n"
         "Item: <code>{item_name}</code>\n"
         "Price: <code>{amount}</code> {currency}\n"
         "Bank: <code>{bank_name}</code>\n"
@@ -672,7 +793,7 @@ VI_TRANSLATIONS: dict[str, str] = {**_ADMIN_VI_TRANSLATIONS,
         "1. Nhấn \"🛍️ Mua hàng\".\n"
         "2. Mở sản phẩm bạn muốn mua.\n"
         "3. Nhấn \"🛒 Mua\" trong trang sản phẩm.\n"
-        "4. Chọn \"📷 Mua bằng QR\" hoặc \"🏦 Mua qua TK chính\".\n"
+
         "5. Chuyển đúng số tiền bot hiển thị.\n"
         "6. Chờ bot xử lý sau khi thanh toán được xác nhận.\n\n"
         "🌐 Muốn đổi ngôn ngữ? Nhấn \"Ngôn ngữ\" để chuyển English / Tiếng Việt.\n\n"
@@ -696,7 +817,7 @@ VI_TRANSLATIONS: dict[str, str] = {**_ADMIN_VI_TRANSLATIONS,
         "1. Mở \"🛍️ Mua hàng\".\n"
         "2. Chọn sản phẩm.\n"
         "3. Nhấn \"🛒 Mua\".\n"
-        "4. Chọn QR hoặc TK chính.\n"
+        "4. Chọn chuyển khoản trực tiếp hoặc TK chính.\n"
         "5. Chuyển đúng số tiền bot hiển thị.\n"
         "6. Chờ bot giao hàng.\n\n"
         "Các lệnh hữu ích:\n"
@@ -903,33 +1024,32 @@ VI_TRANSLATIONS: dict[str, str] = {**_ADMIN_VI_TRANSLATIONS,
 }
 
 VI_TRANSLATIONS.update({
-    "btn.buy_direct_qr": "📷 Mua bằng QR",
-    "btn.buy_direct_account": "🏦 Mua qua TK chính",
-    "btn.pay.vietqr": "🏦 Chuyển khoản VietQR",
-    "btn.pay.vietqr_qr": "📷 Thanh toán bằng QR",
-    "btn.pay.vietqr_account": "🏦 TK chính",
-    "btn.pay.vietqr_done": "✅ Tôi đã chuyển khoản",
+    "btn.buy_direct_account": "🏦 Chuyển khoản trực tiếp",
+
+    "btn.pay.sepay": "🏦 Chuyển khoản SePay",
+    "btn.pay.sepay_account": "📷 Chi tiết chuyển khoản",
+    "btn.pay.sepay_done": "✅ Tôi đã chuyển khoản",
     "btn.admin.payment_approve": "✅ Duyệt",
     "btn.admin.payment_reject": "❌ Từ chối",
-    "payments.vietqr.not_configured": "❌ Chưa cấu hình VietQR.",
-    "payments.vietqr.pending_message": "Yêu cầu thanh toán VietQR đã được tạo ở tin nhắn bên dưới.",
-    "payments.vietqr.choose_option": (
+    "payments.sepay.not_configured": "❌ Chưa cấu hình SePay.",
+    "payments.sepay.pending_message": "Yêu cầu thanh toán SePay đã được tạo ở tin nhắn bên dưới.",
+    "payments.sepay.choose_option": (
         "🏦 <b>Chuyển khoản ngân hàng</b>\n\n"
         "Số dư cần nạp: <code>{amount}</code> {currency}\n"
         "TK chính: <code>{bank_name}</code> - <code>{account_no}</code>\n\n"
         "Chọn một trong hai cách thanh toán bên dưới."
     ),
-    "payments.vietqr.instructions": (
-        "🏦 <b>Chuyển khoản ngân hàng qua VietQR</b>\n\n"
+    "payments.sepay.instructions": (
+        "🏦 <b>Chuyển khoản ngân hàng qua SePay</b>\n\n"
         "Số dư cần nạp: <code>{amount}</code> {currency}\n"
         "Số tiền cần chuyển: <code>{amount_vnd}</code> VND\n"
         "Ngân hàng: <code>{bank_name}</code>\n"
         "Số tài khoản: <code>{account_no}</code>\n"
         "{account_name_line}"
         "Nội dung chuyển khoản: <code>{transfer_content}</code>\n\n"
-        "Hãy quét mã QR hoặc chuyển khoản thủ công. Sau khi chuyển xong, bấm nút xác nhận bên dưới."
+        "Hãy dùng thông tin chuyển khoản bên dưới hoặc chuyển khoản thủ công. Sau khi chuyển xong, bấm nút xác nhận bên dưới."
     ),
-    "payments.vietqr.account_info": (
+    "payments.sepay.account_info": (
         "🏦 <b>Thông tin TK chính</b>\n\n"
         "Ngân hàng: <code>{bank_name}</code>\n"
         "Số tài khoản: <code>{account_no}</code>\n"
@@ -938,19 +1058,19 @@ VI_TRANSLATIONS.update({
         "Nội dung chuyển khoản: <code>{transfer_content}</code>\n\n"
         "Hãy dùng thông tin này để chuyển khoản thủ công, sau đó bấm nút xác nhận."
     ),
-    "payments.vietqr.account_name_line": "Tên tài khoản: <code>{account_name}</code>\n",
-    "payments.vietqr.submitted": (
-        "✅ Đã gửi yêu cầu xác nhận thanh toán VietQR.\n"
+    "payments.sepay.account_name_line": "Tên tài khoản: <code>{account_name}</code>\n",
+    "payments.sepay.submitted": (
+        "✅ Đã gửi yêu cầu xác nhận thanh toán SePay.\n"
         "Số tiền: <code>{amount}</code> {currency}\n"
         "Giao dịch của bạn đang chờ quản trị viên duyệt."
     ),
-    "payments.vietqr.submitted_alert": "Đã gửi yêu cầu xác nhận.",
-    "payments.vietqr.already_submitted": "Giao dịch VietQR này đang chờ duyệt rồi.",
-    "payments.vietqr.already_rejected": "Giao dịch VietQR này đã bị từ chối.",
-    "payments.vietqr.approved": "✅ Chuyển khoản VietQR của bạn đã được xác nhận. {amount} {currency} đã được cộng vào số dư.",
-    "payments.vietqr.rejected": "❌ Chuyển khoản VietQR của bạn bị từ chối. Nếu bạn đã thanh toán, hãy liên hệ hỗ trợ.",
-    "payments.vietqr.owner.review": (
-        "🏦 <b>Duyệt chuyển khoản VietQR</b>\n\n"
+    "payments.sepay.submitted_alert": "Đã gửi yêu cầu xác nhận.",
+    "payments.sepay.already_submitted": "Giao dịch SePay này đang chờ duyệt rồi.",
+    "payments.sepay.already_rejected": "Giao dịch SePay này đã bị từ chối.",
+    "payments.sepay.approved": "✅ Chuyển khoản SePay của bạn đã được xác nhận. {amount} {currency} đã được cộng vào số dư.",
+    "payments.sepay.rejected": "❌ Chuyển khoản SePay của bạn bị từ chối. Nếu bạn đã thanh toán, hãy liên hệ hỗ trợ.",
+    "payments.sepay.owner.review": (
+        "🏦 <b>Duyệt chuyển khoản SePay</b>\n\n"
         "Mã thanh toán: <code>{payment_id}</code>\n"
         "Người dùng: <a href='tg://user?id={user_id}'>{name}</a> (<code>{user_id}</code>)\n"
         "Số dư cần nạp: <code>{amount}</code> {currency}\n"
@@ -961,19 +1081,19 @@ VI_TRANSLATIONS.update({
         "Nội dung chuyển khoản: <code>{transfer_content}</code>\n\n"
         "Hãy kiểm tra ứng dụng ngân hàng rồi bấm duyệt hoặc từ chối."
     ),
-    "payments.vietqr.owner.approved": (
-        "✅ Đã duyệt thanh toán VietQR.\n"
+    "payments.sepay.owner.approved": (
+        "✅ Đã duyệt thanh toán SePay.\n"
         "Mã thanh toán: <code>{payment_id}</code>\n"
         "Người dùng: <code>{user_id}</code>\n"
         "Đã cộng: <code>{amount}</code> {currency}"
     ),
-    "payments.vietqr.owner.rejected": (
-        "❌ Đã từ chối thanh toán VietQR.\n"
+    "payments.sepay.owner.rejected": (
+        "❌ Đã từ chối thanh toán SePay.\n"
         "Mã thanh toán: <code>{payment_id}</code>\n"
         "Người dùng: <code>{user_id}</code>\n"
         "Yêu cầu: <code>{amount}</code> {currency}"
     ),
-    "payments.vietqr.owner.done": "Đã cập nhật trạng thái thanh toán VietQR.",
+    "payments.sepay.owner.done": "Đã cập nhật trạng thái thanh toán SePay.",
     "shop.direct_purchase.choose_option": (
         "🛍 <b>Mua hàng trực tiếp</b>\n\n"
         "Sản phẩm: <code>{item_name}</code>\n"
@@ -990,7 +1110,7 @@ VI_TRANSLATIONS.update({
         "Số tài khoản: <code>{account_no}</code>\n"
         "{account_name_line}"
         "Nội dung chuyển khoản: <code>{transfer_content}</code>\n\n"
-        "Hãy quét mã QR hoặc chuyển khoản thủ công. Sau khi chuyển xong, bấm nút xác nhận bên dưới."
+        "Hãy dùng thông tin chuyển khoản bên dưới hoặc chuyển khoản thủ công. Sau khi chuyển xong, bấm nút xác nhận bên dưới."
     ),
     "shop.direct_purchase.account_info": (
         "🛍 <b>TK chính để mua hàng trực tiếp</b>\n\n"

@@ -48,41 +48,44 @@ class RecoveryManager:
                 await asyncio.sleep(30)
 
     async def recover_pending_payments(self):
-        """Recovery of suspended payments"""
-        from bot.database import Database
-        from bot.database.models import Payments
-
+        """Recovery of suspended payments (infinite loop for persistent processes)."""
         while self.running:
             try:
-                payment_copies = []
-                async with Database().session() as s:
-                    cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
-                    result = await s.execute(
-                        select(Payments).where(
-                            Payments.status == "pending",
-                            Payments.created_at < cutoff,
-                            Payments.provider.in_(["cryptopay", "usdt"])
-                        )
-                    )
-                    pending_payments = result.scalars().all()
-
-                    for p in pending_payments:
-                        payment_copies.append({
-                            'id': p.id,
-                            'provider': p.provider,
-                            'external_id': p.external_id,
-                            'user_id': p.user_id,
-                            'amount': p.amount,
-                            'currency': p.currency,
-                        })
-
-                for pc in payment_copies:
-                    await self._check_and_process_payment(pc)
-
+                await self.recover_pending_payments_once()
             except Exception as e:
                 logger.error(f"Error recovering payments: {e}")
 
             await asyncio.sleep(300)
+
+    async def recover_pending_payments_once(self):
+        """Single recovery pass. Safe to call from serverless cron endpoints."""
+        from bot.database import Database
+        from bot.database.models import Payments
+
+        payment_copies = []
+        async with Database().session() as s:
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+            result = await s.execute(
+                select(Payments).where(
+                    Payments.status == "pending",
+                    Payments.created_at < cutoff,
+                    Payments.provider.in_(["cryptopay", "usdt"])
+                )
+            )
+            pending_payments = result.scalars().all()
+
+            for p in pending_payments:
+                payment_copies.append({
+                    'id': p.id,
+                    'provider': p.provider,
+                    'external_id': p.external_id,
+                    'user_id': p.user_id,
+                    'amount': p.amount,
+                    'currency': p.currency,
+                })
+
+        for pc in payment_copies:
+            await self._check_and_process_payment(pc)
 
     async def _check_and_process_payment(self, payment):
         """Verification and processing of a specific payment.

@@ -38,16 +38,20 @@ auth_middleware: AuthenticationMiddleware = None
 rate_limit_middleware = None
 
 
-async def __on_start_up(dp: Dispatcher, bot: Bot) -> None:
-    """Initialize bot on startup"""
-    global recovery_manager, admin_server
+async def initialize_bot_runtime(dp: Dispatcher, bot: Bot) -> None:
+    """Shared initialization used by both polling (run.py) and serverless (Vercel) modes.
+
+    Registers handlers, middleware, and the caching layer. It intentionally does NOT
+    start long-running background services (recovery, cleanup, scheduler or the admin
+    web server), so it is safe to call once per warm serverless instance.
+    """
+    global security_middleware, auth_middleware, rate_limit_middleware
 
     # Registration of handlers and models
     register_all_handlers(dp)
     await register_models()
 
     # Add security middleware (using global instances for handler access)
-    global security_middleware, auth_middleware
     security_middleware = SecurityMiddleware()
     auth_middleware = AuthenticationMiddleware()
     await auth_middleware.load_blocked_users()
@@ -65,7 +69,6 @@ async def __on_start_up(dp: Dispatcher, bot: Bot) -> None:
             'top_up': (5, 300),  # 5 top-ups in 5 minutes
         }
     )
-    global rate_limit_middleware
     rate_limit_middleware = setup_rate_limiting(dp, rate_config, auth_middleware=auth_middleware)
 
     # Initializing metrics
@@ -90,10 +93,9 @@ async def __on_start_up(dp: Dispatcher, bot: Bot) -> None:
 
     logging.info("Security middleware initialized")
 
-    storage = get_redis_storage()
-    if isinstance(storage, RedisStorage):
+    if isinstance(dp.storage, RedisStorage):
         # Use the same Redis for caching
-        await init_cache_manager(storage.redis)
+        await init_cache_manager(dp.storage.redis)
 
         # Initialize the statistics cache
         init_stats_cache()
@@ -102,13 +104,20 @@ async def __on_start_up(dp: Dispatcher, bot: Bot) -> None:
         await warm_up_critical_caches()
 
         logging.info("Cache system initialized and warmed up")
-
-        # Start cache scheduler only when Redis is available
-        global cache_scheduler
-        cache_scheduler = CacheScheduler()
-        await cache_scheduler.start()
     else:
         logging.warning("Redis not available - caching disabled")
+
+
+async def __on_start_up(dp: Dispatcher, bot: Bot) -> None:
+    """Initialize bot on startup (polling / webhook modes run via run.py)"""
+    global recovery_manager, admin_server, cache_scheduler
+
+    await initialize_bot_runtime(dp, bot)
+
+    # Start cache scheduler only when Redis is available
+    if isinstance(dp.storage, RedisStorage):
+        cache_scheduler = CacheScheduler()
+        await cache_scheduler.start()
 
     # Start the recovery system
     recovery_manager = RecoveryManager(bot)
@@ -122,7 +131,7 @@ async def __on_start_up(dp: Dispatcher, bot: Bot) -> None:
     import uvicorn
     from bot.web import create_admin_app
 
-    admin_app = create_admin_app()
+    admin_app = create_admin_app(bot)
     config = uvicorn.Config(
         admin_app,
         host=EnvKeys.ADMIN_HOST,
@@ -333,6 +342,6 @@ async def start_bot() -> None:
             if cache_scheduler:
                 await cache_scheduler.stop()
 
-            if isinstance(storage, RedisStorage):
-                await storage.close()
+            if isinstance(dp.storage, RedisStorage):
+                await dp.storage.close()
                 logging.info("Redis connection closed")

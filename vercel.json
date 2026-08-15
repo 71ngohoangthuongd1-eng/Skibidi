@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/index.py": {
+      "excludeFiles": "{data/**,logs/**,assets/**,.git/**,__pycache__/**,**/__pycache__/**,migrations/**,scripts/**}"
+    }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api/index" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/cleanup",
+      "schedule": "0 4 * * *"
+    }
+  ]
+}

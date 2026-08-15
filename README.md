@@ -310,6 +310,15 @@ The application requires the following environment variables:
 | `PAYMENT_TIME`            | Invoice validity in seconds                                                                  | `1800`  |
 | `MIN_AMOUNT`              | Minimum payment amount                                                                       | `20`    |
 | `MAX_AMOUNT`              | Maximum payment amount                                                                       | `10000` |
+| `SEPAY_ENABLED`           | Enable SePay automatic bank transfer confirmation                                            | `1`     |
+| `SEPAY_BANK_NAME`         | SePay bank short name                                                                        | -       |
+| `SEPAY_ACCOUNT_NO`        | SePay receiving account number                                                               | -       |
+| `SEPAY_ACCOUNT_NAME`      | SePay account holder name                                                                    | -       |
+| `SEPAY_WEBHOOK_SECRET`    | Secret header value expected from SePay IPN                                                  | -       |
+| `SEPAY_IPN_PATH`          | Internal IPN route mounted by the bot                                                         | `/sepay/ipn` |
+| `SEPAY_PAYMENT_PREFIX`    | Prefix used in transfer content to match incoming SePay payments                             | `SP`     |
+
+**SePay bank transfer**: fill `SEPAY_BANK_NAME`, `SEPAY_ACCOUNT_NO`, `SEPAY_WEBHOOK_SECRET`, and `SEPAY_PAYMENT_PREFIX`, then point SePay IPN to your public bot URL plus `SEPAY_IPN_PATH` (default: `/sepay/ipn`). Install from `requirements-prod.txt` so the admin panel dependency `sqladmin` is available together with the bot runtime.
 
 </details>
 

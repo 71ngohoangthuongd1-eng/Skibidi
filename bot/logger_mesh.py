@@ -33,16 +33,20 @@ def configure_logging(console: bool = True, debug: bool = False):
         bot_path = EnvKeys.BOT_LOGFILE
         audit_path = EnvKeys.BOT_AUDITFILE
 
-        for p in {bot_path, audit_path}:
-            os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
+        try:
+            for p in {bot_path, audit_path}:
+                os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
 
-        bot_fh = RotatingFileHandler(bot_path, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
-        bot_fh.setFormatter(fmt)
-        logger.addHandler(bot_fh)
+            bot_fh = RotatingFileHandler(bot_path, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
+            bot_fh.setFormatter(fmt)
+            logger.addHandler(bot_fh)
 
-        audit_fh = RotatingFileHandler(audit_path, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
-        audit_fh.setFormatter(fmt)
-        audit_logger.addHandler(audit_fh)
+            audit_fh = RotatingFileHandler(audit_path, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
+            audit_fh.setFormatter(fmt)
+            audit_logger.addHandler(audit_fh)
+        except OSError:
+            # Read-only filesystem (e.g. Vercel serverless): keep console-only logging.
+            pass
 
     # Disable redundant logs from aiogram
     # Show only WARNINGS and above for these components
