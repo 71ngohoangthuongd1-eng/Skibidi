@@ -365,13 +365,17 @@ async def register_models():
     async with Database().engine.begin() as conn:
         await conn.run_sync(Database.BASE.metadata.create_all)
         # `create_all` never ALTERs an existing table, so on an upgraded DB the
-        # idempotency column would be missing. Repair it (serverless-safe, no-op once done).
+        # added columns would be missing. Repair them (serverless-safe, no-op once
+        # done). The inspection MUST happen inside `run_sync` — touching
+        # `conn.sync_connection` outside a greenlet context raises
+        # "greenlet_spawn has not been called" (SQLAlchemy async).
         try:
             from sqlalchemy import inspect
             from sqlalchemy.schema import CreateIndex
 
-            inspector = inspect(conn.sync_connection)
-            payments_columns = [c["name"] for c in inspector.get_columns("payments")]
+            payments_columns = await conn.run_sync(
+                lambda sc: [c["name"] for c in inspect(sc).get_columns("payments")]
+            )
             for _col, _ddl in (
                 ("item_name", "ALTER TABLE payments ADD COLUMN item_name VARCHAR(100)"),
                 ("promo_code", "ALTER TABLE payments ADD COLUMN promo_code VARCHAR(50)"),
@@ -380,9 +384,11 @@ async def register_models():
                     await conn.run_sync(
                         lambda sc, _ddl=_ddl: sc.execute(text(_ddl))
                     )
-            del payments_columns
-            columns = [c["name"] for c in inspector.get_columns("bought_goods")]
-            if "payment_id" not in columns:
+
+            bought_columns = await conn.run_sync(
+                lambda sc: [c["name"] for c in inspect(sc).get_columns("bought_goods")]
+            )
+            if "payment_id" not in bought_columns:
                 await conn.run_sync(
                     lambda sc: sc.execute(
                         text(
@@ -397,5 +403,5 @@ async def register_models():
                     ))
                 )
         except Exception as e:
-            logging.getLogger(__name__).warning(f"Schema repair for bought_goods.payment_id skipped: {e}")
+            logging.getLogger(__name__).warning(f"Schema repair skipped: {e}")
     await Role.insert_roles()
