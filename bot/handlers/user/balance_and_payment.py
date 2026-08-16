@@ -4,9 +4,10 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message, PreCheckoutQuery, SuccessfulPayment
+from aiogram.types import CallbackQuery, Message, PreCheckoutQuery, SuccessfulPayment, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.enums.chat_type import ChatType
+from aiogram.enums import ChatAction
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from sqlalchemy import select, update
 
@@ -27,7 +28,8 @@ from bot.misc import EnvKeys, ItemPurchaseRequest, validate_telegram_id, validat
 from bot.handlers.other import _any_payment_method_enabled, is_safe_item_name
 from bot.misc.metrics import get_metrics
 from bot.misc.services import CryptoPayAPI, CryptoPayAPIError, send_stars_invoice, send_fiat_invoice, \
-    is_sepay_configured, convert_balance_amount_to_vnd, build_sepay_transfer_content
+    is_sepay_configured, convert_balance_amount_to_vnd, build_sepay_transfer_content, \
+    build_vietqr_url, fetch_qr_image, send_chat_action
 from bot.misc.services.payment import _minor_units_for
 from bot.filters import ValidAmountFilter
 from bot.i18n import localize, localize_for
@@ -695,11 +697,46 @@ async def buy_direct_sepay_callback_handler(call: CallbackQuery, state: FSMConte
         **_sepay_context(payment),
     }
 
-    await call.message.answer(
-        localize("shop.direct_purchase.instructions", **context),
-        reply_markup=sepay_confirm_menu(payment.id, back_cb="back_to_item"),
-    )
+    # Acknowledge now so Telegram stops the loading spinner before the
+    # potentially slower VietQR fetch / photo upload below.
     await call.answer()
+
+    amount_vnd = int(context["amount_vnd"])
+    transfer_content = context["transfer_content"]
+
+    # Signal "uploading a photo" while we build + fetch the QR image.
+    await send_chat_action(call.bot, call.message.chat.id, ChatAction.UPLOAD_PHOTO)
+
+    qr_bytes = None
+    try:
+        qr_url = build_vietqr_url(
+            bank=EnvKeys.SEPAY_BANK_NAME,
+            account_no=EnvKeys.SEPAY_ACCOUNT_NO,
+            amount_vnd=amount_vnd,
+            content=transfer_content,
+            holder=EnvKeys.SEPAY_ACCOUNT_NAME,
+        )
+        qr_bytes = await fetch_qr_image(qr_url)
+    except Exception:
+        logger.exception("QR generation failed for payment %s", payment.id)
+
+    if qr_bytes:
+        try:
+            await call.message.answer_photo(
+                BufferedInputFile(qr_bytes, filename="sepay_qr.png"),
+                caption=localize("shop.direct_purchase.qr_caption", **context),
+                reply_markup=sepay_confirm_menu(payment.id, back_cb="back_to_item"),
+            )
+        except Exception:
+            logger.exception("Failed to send QR photo for payment %s", payment.id)
+            qr_bytes = None
+
+    if not qr_bytes:
+        # Fallback to a plain-text message so the payment is never lost.
+        await call.message.answer(
+            localize("shop.direct_purchase.instructions", **context),
+            reply_markup=sepay_confirm_menu(payment.id, back_cb="back_to_item"),
+        )
 
 
 @router.callback_query(F.data == "check")

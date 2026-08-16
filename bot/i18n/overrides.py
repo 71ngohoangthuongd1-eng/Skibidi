@@ -333,15 +333,26 @@ EN_TRANSLATIONS.update({
         "Use the transfer details below. SePay will confirm the payment automatically."
     ),
     "shop.direct_purchase.instructions": (
-        "🛍 <b>Direct purchase via SePay</b>\n\n"
+        "🛍️ <b>Direct purchase via bank transfer</b>\n\n"
         "Item: <code>{item_name}</code>\n"
         "Price: <code>{amount}</code> {currency}\n"
-        "Amount to transfer: <code>{amount_vnd}</code> VND\n"
-        "Bank: <code>{bank_name}</code>\n"
-        "Account number: <code>{account_no}</code>\n"
-        "{account_name_line}"
-        "Transfer content: <code>{transfer_content}</code>\n\n"
-        "Send the exact transfer content above. SePay will confirm the order automatically."
+        "Amount to transfer: <b>{amount_vnd} VND</b>\n"
+        "🏦 Bank: <code>{bank_name}</code>\n"
+        "💳 Account number: <code>{account_no}</code>\n"
+        "👤 Account holder: <code>{account_name}</code>\n"
+        "📝 Transfer content: <code>{transfer_content}</code>\n\n"
+        "Transfer the exact amount with the content above. The bot will confirm the order automatically via SePay."
+    ),
+    "shop.direct_purchase.qr_caption": (
+        "🛍️ <b>Direct purchase via bank transfer</b>\n\n"
+        "Item: <code>{item_name}</code>\n"
+        "Price: <code>{amount}</code> {currency}\n"
+        "Amount to transfer: <b>{amount_vnd} VND</b>\n\n"
+        "🏦 Bank: <code>{bank_name}</code>\n"
+        "💳 Account number: <code>{account_no}</code>\n"
+        "👤 Account holder: <code>{account_name}</code>\n"
+        "📝 Transfer content: <code>{transfer_content}</code>\n\n"
+        "<b>Scan the QR and transfer the exact amount. The bot will deliver the item automatically after SePay confirms the payment.</b>"
     ),
     "shop.direct_purchase.account_info": (
         "🛍 <b>Main account for direct purchase</b>\n\n"
@@ -388,15 +399,26 @@ VI_TRANSLATIONS.update({
         "Dùng thông tin bên dưới, SePay sẽ tự động xác nhận thanh toán."
     ),
     "shop.direct_purchase.instructions": (
-        "🛍 <b>Mua hàng qua SePay</b>\n\n"
+        "🛍️ <b>Mua hàng trực tiếp qua chuyển khoản</b>\n\n"
         "Sản phẩm: <code>{item_name}</code>\n"
         "Giá: <code>{amount}</code> {currency}\n"
-        "Số tiền cần chuyển: <code>{amount_vnd}</code> VND\n"
-        "Ngân hàng: <code>{bank_name}</code>\n"
-        "Số tài khoản: <code>{account_no}</code>\n"
-        "{account_name_line}"
-        "Nội dung chuyển khoản: <code>{transfer_content}</code>\n\n"
-        "Hãy gửi đúng nội dung chuyển khoản ở trên. SePay sẽ tự động xác nhận đơn hàng."
+        "Số tiền cần chuyển: <b>{amount_vnd} VND</b>\n"
+        "🏦 Ngân hàng: <code>{bank_name}</code>\n"
+        "💳 Số tài khoản: <code>{account_no}</code>\n"
+        "👤 Chủ tài khoản: <code>{account_name}</code>\n"
+        "📝 Nội dung chuyển khoản: <code>{transfer_content}</code>\n\n"
+        "Chuyển đúng số tiền và nội dung trên. Bot sẽ tự động xác nhận và giao hàng sau khi SePay xác nhận thanh toán."
+    ),
+    "shop.direct_purchase.qr_caption": (
+        "🛍️ <b>Mua hàng trực tiếp qua chuyển khoản</b>\n\n"
+        "Sản phẩm: <code>{item_name}</code>\n"
+        "Giá: <code>{amount}</code> {currency}\n"
+        "Số tiền cần chuyển: <b>{amount_vnd} VND</b>\n\n"
+        "🏦 Ngân hàng: <code>{bank_name}</code>\n"
+        "💳 Số tài khoản: <code>{account_no}</code>\n"
+        "👤 Chủ tài khoản: <code>{account_name}</code>\n"
+        "📝 Nội dung: <code>{transfer_content}</code>\n\n"
+        "<b>Quét QR và chuyển đúng số tiền. Bot sẽ tự động giao hàng sau khi SePay xác nhận thanh toán.</b>"
     ),
     "shop.direct_purchase.account_info": (
         "🛍 <b>TK chính để mua hàng</b>\n\n"
@@ -495,15 +517,26 @@ EN_TRANSLATIONS.update({
         "Choose one payment option below."
     ),
     "shop.direct_purchase.instructions": (
-        "🛍 <b>Direct purchase via bank transfer</b>\n\n"
+        "🛍️ <b>Direct purchase via bank transfer</b>\n\n"
         "Item: <code>{item_name}</code>\n"
         "Price: <code>{amount}</code> {currency}\n"
-        "Amount to transfer: <code>{amount_vnd}</code> VND\n"
-        "Bank: <code>{bank_name}</code>\n"
-        "Account number: <code>{account_no}</code>\n"
-        "{account_name_line}"
-        "Transfer content: <code>{transfer_content}</code>\n\n"
-        "Use the transfer details below or transfer manually. After sending money, tap the confirmation button below."
+        "Amount to transfer: <b>{amount_vnd} VND</b>\n"
+        "🏦 Bank: <code>{bank_name}</code>\n"
+        "💳 Account number: <code>{account_no}</code>\n"
+        "👤 Account holder: <code>{account_name}</code>\n"
+        "📝 Transfer content: <code>{transfer_content}</code>\n\n"
+        "Transfer the exact amount with the content above. The bot will confirm the order automatically via SePay."
+    ),
+    "shop.direct_purchase.qr_caption": (
+        "🛍️ <b>Direct purchase via bank transfer</b>\n\n"
+        "Item: <code>{item_name}</code>\n"
+        "Price: <code>{amount}</code> {currency}\n"
+        "Amount to transfer: <b>{amount_vnd} VND</b>\n\n"
+        "🏦 Bank: <code>{bank_name}</code>\n"
+        "💳 Account number: <code>{account_no}</code>\n"
+        "👤 Account holder: <code>{account_name}</code>\n"
+        "📝 Transfer content: <code>{transfer_content}</code>\n\n"
+        "<b>Scan the QR and transfer the exact amount. The bot will deliver the item automatically after SePay confirms the payment.</b>"
     ),
     "shop.direct_purchase.account_info": (
         "4. Choose direct transfer or bank account.\n"
@@ -1108,15 +1141,26 @@ VI_TRANSLATIONS.update({
         "Chọn một trong hai cách thanh toán bên dưới."
     ),
     "shop.direct_purchase.instructions": (
-        "🛍 <b>Mua hàng trực tiếp qua chuyển khoản</b>\n\n"
+        "🛍️ <b>Mua hàng trực tiếp qua chuyển khoản</b>\n\n"
         "Sản phẩm: <code>{item_name}</code>\n"
         "Giá: <code>{amount}</code> {currency}\n"
-        "Số tiền cần chuyển: <code>{amount_vnd}</code> VND\n"
-        "Ngân hàng: <code>{bank_name}</code>\n"
-        "Số tài khoản: <code>{account_no}</code>\n"
-        "{account_name_line}"
-        "Nội dung chuyển khoản: <code>{transfer_content}</code>\n\n"
-        "Hãy dùng thông tin chuyển khoản bên dưới hoặc chuyển khoản thủ công. Sau khi chuyển xong, bấm nút xác nhận bên dưới."
+        "Số tiền cần chuyển: <b>{amount_vnd} VND</b>\n"
+        "🏦 Ngân hàng: <code>{bank_name}</code>\n"
+        "💳 Số tài khoản: <code>{account_no}</code>\n"
+        "👤 Chủ tài khoản: <code>{account_name}</code>\n"
+        "📝 Nội dung chuyển khoản: <code>{transfer_content}</code>\n\n"
+        "Chuyển đúng số tiền và nội dung trên. Bot sẽ tự động xác nhận và giao hàng sau khi SePay xác nhận thanh toán."
+    ),
+    "shop.direct_purchase.qr_caption": (
+        "🛍️ <b>Mua hàng trực tiếp qua chuyển khoản</b>\n\n"
+        "Sản phẩm: <code>{item_name}</code>\n"
+        "Giá: <code>{amount}</code> {currency}\n"
+        "Số tiền cần chuyển: <b>{amount_vnd} VND</b>\n\n"
+        "🏦 Ngân hàng: <code>{bank_name}</code>\n"
+        "💳 Số tài khoản: <code>{account_no}</code>\n"
+        "👤 Chủ tài khoản: <code>{account_name}</code>\n"
+        "📝 Nội dung: <code>{transfer_content}</code>\n\n"
+        "<b>Quét QR và chuyển đúng số tiền. Bot sẽ tự động giao hàng sau khi SePay xác nhận thanh toán.</b>"
     ),
     "shop.direct_purchase.account_info": (
         "🛍 <b>TK chính để mua hàng trực tiếp</b>\n\n"

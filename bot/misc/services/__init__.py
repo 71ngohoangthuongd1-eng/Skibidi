@@ -8,3 +8,5 @@ from bot.misc.services.recovery import RecoveryManager
 from bot.misc.services.broadcast_system import BroadcastManager, BroadcastStats
 from bot.misc.services.cleanup import CleanupManager
 from bot.misc.services.product_ad import ProductAdManager, reset_memory_state
+from bot.misc.services.sepay_qr import build_vietqr_url, fetch_qr_image
+from bot.misc.services.telegram_ux import send_chat_action
