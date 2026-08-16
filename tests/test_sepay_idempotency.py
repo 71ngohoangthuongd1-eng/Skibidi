@@ -267,3 +267,33 @@ class TestSingleStockConcurrency:
 
         await raw_insert()
         assert inserted == "integrity_error"
+
+
+class TestPersistedDeliveryHints:
+    """Regression: delivery hints must be persisted on the payments row, not just
+    attached to an in-memory ORM object. A lost Redis intent (7-day TTL) must still
+    recover item_name/promo_code from the DB so a late IPN can deliver the item."""
+
+    async def test_hints_survive_a_fresh_read(self, user_factory, item_factory):
+        await user_factory(telegram_id=400401, balance=0)
+        await item_factory(name="Hinted", price=100, values=[("h1", False)])
+
+        pid = await create_pending_payment(
+            provider="sepay_item", external_id="CODE_HINT", user_id=400401,
+            amount=100.0, currency="RUB", item_name="Hinted", promo_code="PROMO1",
+        )
+
+        # Reload from the DB in a brand-new session: the hints must persist.
+        fresh = await _payment_row(pid)
+        assert fresh.item_name == "Hinted"
+        assert fresh.promo_code == "PROMO1"
+
+    async def test_default_hints_are_none(self, user_factory):
+        await user_factory(telegram_id=400402, balance=0)
+        pid = await create_pending_payment(
+            provider="sepay", external_id="CODE_TOPUP", user_id=400402,
+            amount=50.0, currency="RUB",
+        )
+        fresh = await _payment_row(pid)
+        assert fresh.item_name is None
+        assert fresh.promo_code is None

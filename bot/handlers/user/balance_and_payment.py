@@ -154,14 +154,29 @@ async def handle_sepay_ipn(payload: dict, bot) -> None:
     """
     transfer_type = (payload.get("transfer_type") or payload.get("transferType") or "").lower()
     if transfer_type not in {"credit", "in"}:
+        await log_audit(
+            "sepay_ipn_skip_transfer_type",
+            level="WARNING",
+            details=f"transfer_type={transfer_type!r}",
+        )
         return
 
     amount = _extract_sepay_amount(payload)
     if amount <= 0:
+        await log_audit(
+            "sepay_ipn_skip_invalid_amount",
+            level="WARNING",
+            details=f"transfer_type={transfer_type}, amount={amount}",
+        )
         return
 
     code = _extract_sepay_code(payload)
     if not code:
+        await log_audit(
+            "sepay_ipn_skip_no_code",
+            level="WARNING",
+            details=f"transfer_type={transfer_type}, amount={amount}",
+        )
         return
     normalized_code = _normalize_sepay_code(code)
 
@@ -269,6 +284,14 @@ async def handle_sepay_ipn(payload: dict, bot) -> None:
     if status == "delivered":
         await _send_direct_purchase_receipt(bot, payment.user_id, purchase_data)
         await delete_direct_purchase_intent(payment.id)
+        await log_audit(
+            "sepay_ipn_delivered",
+            level="INFO",
+            user_id=payment.user_id,
+            resource_type="Payment",
+            resource_id=str(payment.id),
+            details=f"item={item_name}, unique_id={purchase_data.get('unique_id')}",
+        )
     elif status == "refunded":
         try:
             user_locale = get_user_locale(payment.user_id)
@@ -339,6 +362,8 @@ async def _create_or_reuse_direct_purchase_payment(
         user_id=user_id,
         amount=float(amount),
         currency=EnvKeys.PAY_CURRENCY,
+        item_name=item_name,
+        promo_code=promo_code,
     )
     await set_direct_purchase_intent(payment_id, item_name=item_name, promo_code=promo_code)
     await state.update_data(
@@ -347,10 +372,6 @@ async def _create_or_reuse_direct_purchase_payment(
         direct_purchase_promo=promo_code,
     )
     payment = await _get_payment_by_id(payment_id)
-    # Locally attached delivery hints: survive the 7-day Redis TTL so a late IPN
-    # (or a lost intent) can still determine what the payment was paid for.
-    payment.item_name = item_name
-    payment.promo_code = promo_code
     return payment
 
 

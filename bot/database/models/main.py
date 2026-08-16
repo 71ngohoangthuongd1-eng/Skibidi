@@ -240,6 +240,11 @@ class Payments(Database.BASE):
     #   balance_refunded = SePay direct purchase delivered the money to the user's
     #   balance instead of an item (e.g. out of stock) — a retry must NOT deliver again.
     status = Column(String(16), nullable=False, default="pending")
+    # SePay direct-purchase delivery hints. Persisted at checkout so a late IPN
+    # still knows what the payment was for even after the 7-day Redis intent TTL
+    # expires (otherwise a lost intent strands the buyer with money but no item).
+    item_name = Column(String(100), nullable=True)
+    promo_code = Column(String(50), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
@@ -366,6 +371,16 @@ async def register_models():
             from sqlalchemy.schema import CreateIndex
 
             inspector = inspect(conn.sync_connection)
+            payments_columns = [c["name"] for c in inspector.get_columns("payments")]
+            for _col, _ddl in (
+                ("item_name", "ALTER TABLE payments ADD COLUMN item_name VARCHAR(100)"),
+                ("promo_code", "ALTER TABLE payments ADD COLUMN promo_code VARCHAR(50)"),
+            ):
+                if _col not in payments_columns:
+                    await conn.run_sync(
+                        lambda sc, _ddl=_ddl: sc.execute(text(_ddl))
+                    )
+            del payments_columns
             columns = [c["name"] for c in inspector.get_columns("bought_goods")]
             if "payment_id" not in columns:
                 await conn.run_sync(

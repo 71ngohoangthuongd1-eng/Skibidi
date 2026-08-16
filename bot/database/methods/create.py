@@ -107,7 +107,10 @@ async def create_operation(user_id: int, value: int, operation_time: datetime) -
         s.add(Operations(user_id, value, operation_time))
 
 
-async def create_pending_payment(provider: str, external_id: str, user_id: int, amount, currency: str) -> int:
+async def create_pending_payment(
+    provider: str, external_id: str, user_id: int, amount, currency: str,
+    item_name: str | None = None, promo_code: str | None = None,
+) -> int:
     """Create pending payment and return its ID."""
     async with Database().session() as s:
         payment = Payments(
@@ -116,7 +119,9 @@ async def create_pending_payment(provider: str, external_id: str, user_id: int, 
             user_id=user_id,
             amount=Decimal(str(amount)),
             currency=currency,
-            status="pending"
+            status="pending",
+            item_name=item_name,
+            promo_code=promo_code,
         )
         s.add(payment)
         await s.flush()
