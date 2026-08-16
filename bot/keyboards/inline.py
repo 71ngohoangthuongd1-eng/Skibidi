@@ -191,13 +191,15 @@ def sepay_menu(payment_id: int, callback_prefix: str = "sepay", back_cb: str = "
     return kb.as_markup()
 
 
-def sepay_confirm_menu(payment_id: int, callback_prefix: str = "sepay", back_cb: str = "profile") -> InlineKeyboardMarkup:
+def sepay_confirm_menu(payment_id: int, back_cb: str = "profile") -> InlineKeyboardMarkup:
     """
     Compact SePay keyboard for the final payment detail step.
+
+    The transfer is confirmed automatically by the SePay IPN webhook, so there is
+    no manual "I have transferred" button.
     """
     return simple_buttons(
         [
-            (localize("btn.pay.sepay_done"), f"{callback_prefix}_done:{payment_id}"),
             (localize("btn.back"), back_cb),
         ],
         per_row=1,
@@ -211,7 +213,6 @@ def direct_purchase_choice(back_cb: str = "back_to_item") -> InlineKeyboardMarku
     return simple_buttons(
         [
             (localize("btn.buy_direct_account"), "buy_direct_account"),
-            (localize("btn.pay.sepay_done"), "item_sepay_done"),
             (localize("btn.back"), back_cb),
         ],
         per_row=1,

@@ -354,13 +354,6 @@ EN_TRANSLATIONS.update({
         "Transfer content: <code>{transfer_content}</code>\n\n"
         "After sending money, SePay will confirm the order automatically."
     ),
-    "shop.direct_purchase.submitted": (
-        "✅ Direct purchase request received.\n"
-        "Item: <code>{item_name}</code>\n"
-        "Amount: <code>{amount}</code> {currency}\n"
-        "SePay will confirm it automatically."
-    ),
-    "shop.direct_purchase.submitted_alert": "Waiting for SePay confirmation.",
     "shop.direct_purchase.approved_balance_only": (
         "✅ The payment was confirmed, but the bot could not deliver the item automatically.\n"
         "Reason: {reason}\n"
@@ -416,13 +409,6 @@ VI_TRANSLATIONS.update({
         "Nội dung chuyển khoản: <code>{transfer_content}</code>\n\n"
         "Sau khi chuyển tiền, SePay sẽ tự động xác nhận đơn hàng."
     ),
-    "shop.direct_purchase.submitted": (
-        "✅ Đã nhận yêu cầu mua hàng trực tiếp.\n"
-        "Sản phẩm: <code>{item_name}</code>\n"
-        "Số tiền: <code>{amount}</code> {currency}\n"
-        "SePay sẽ tự động xác nhận."
-    ),
-    "shop.direct_purchase.submitted_alert": "Đang chờ SePay xác nhận.",
     "shop.direct_purchase.approved_balance_only": (
         "✅ Thanh toán đã được xác nhận, nhưng bot chưa giao được hàng tự động.\n"
         "Lý do: {reason}\n"
@@ -530,13 +516,6 @@ EN_TRANSLATIONS.update({
         "Transfer content: <code>{transfer_content}</code>\n\n"
         "After transfer, tap the confirmation button."
     ),
-    "shop.direct_purchase.submitted": (
-        "✅ Direct purchase payment submitted.\n"
-        "Item: <code>{item_name}</code>\n"
-        "Amount: <code>{amount}</code> {currency}\n"
-        "Your payment is waiting for manual confirmation."
-    ),
-    "shop.direct_purchase.submitted_alert": "Direct purchase request sent for confirmation.",
     "shop.direct_purchase.owner.review": (
         "🛍 <b>Direct purchase review</b>\n\n"
         "Payment ID: <code>{payment_id}</code>\n"
@@ -1150,13 +1129,6 @@ VI_TRANSLATIONS.update({
         "Nội dung chuyển khoản: <code>{transfer_content}</code>\n\n"
         "Sau khi chuyển xong, bấm nút xác nhận."
     ),
-    "shop.direct_purchase.submitted": (
-        "✅ Đã gửi yêu cầu mua hàng trực tiếp.\n"
-        "Sản phẩm: <code>{item_name}</code>\n"
-        "Số tiền: <code>{amount}</code> {currency}\n"
-        "Giao dịch của bạn đang chờ quản trị viên duyệt."
-    ),
-    "shop.direct_purchase.submitted_alert": "Đã gửi yêu cầu mua hàng trực tiếp.",
     "shop.direct_purchase.owner.review": (
         "🛍 <b>Duyệt mua hàng trực tiếp</b>\n\n"
         "Mã thanh toán: <code>{payment_id}</code>\n"

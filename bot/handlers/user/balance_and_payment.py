@@ -697,37 +697,9 @@ async def buy_direct_sepay_callback_handler(call: CallbackQuery, state: FSMConte
 
     await call.message.answer(
         localize("shop.direct_purchase.instructions", **context),
-        reply_markup=sepay_confirm_menu(payment.id, callback_prefix="item_sepay", back_cb="back_to_item"),
+        reply_markup=sepay_confirm_menu(payment.id, back_cb="back_to_item"),
     )
     await call.answer()
-
-
-@router.callback_query(F.data.startswith("item_sepay_done:"))
-async def item_sepay_done_callback_handler(call: CallbackQuery):
-    """Acknowledge a direct-purchase transfer; SePay will confirm automatically."""
-    try:
-        payment_id = int(call.data.split(":", maxsplit=1)[1])
-    except (IndexError, ValueError):
-        await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
-    payment = await _get_payment_by_id(payment_id)
-    intent = await get_direct_purchase_intent(payment_id)
-    if not payment or payment.provider != "sepay_item" or payment.user_id != call.from_user.id or not intent:
-        await call.answer(localize("errors.invalid_data"), show_alert=True)
-        return
-
-    await _edit_message_content(
-        call.message,
-        text=localize(
-            "shop.direct_purchase.submitted",
-            item_name=intent["item_name"],
-            amount=payment.amount,
-            currency=payment.currency,
-        ),
-        reply_markup=back("back_to_item"),
-    )
-    await call.answer(localize("shop.direct_purchase.submitted_alert"))
 
 
 @router.callback_query(F.data == "check")
