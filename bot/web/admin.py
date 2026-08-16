@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import json
 import logging
 import time
 from typing import Any
@@ -18,6 +21,56 @@ from bot.misc import EnvKeys
 from bot.database.methods.audit import log_audit
 
 logger = logging.getLogger(__name__)
+
+_SEPAY_HMAC_TOLERANCE_SECONDS = 300  # SePay docs: reject timestamps off by >5 minutes
+
+
+def _verify_sepay_ipn_signature(request: Request, raw_body: bytes) -> bool:
+    """Authenticate a SePay IPN webhook call.
+
+    Supports SePay's current webhook authentication methods and returns whether
+    the call is authentic:
+
+    - HMAC-SHA256 (recommended by SePay): SePay signs ``{timestamp}.{raw_body}``
+      with the shared ``SEPAY_WEBHOOK_SECRET`` and sends it as
+      ``X-SePay-Signature: sha256=<hex>`` plus ``X-SePay-Timestamp`` (unix secs).
+      We recompute over the raw body bytes and constant-time compare, and reject
+      replays with a timestamp older/newer than 5 minutes.
+    - API Key (legacy compat): ``X-Secret-Key`` header matched in constant time.
+      This is also what older SePay integrations used; kept so the old env var
+      contract keeps working until the SePay side is switched to HMAC.
+
+    If ``SEPAY_WEBHOOK_SECRET`` is empty the request is trusted as-is (matches
+    the "no authentication" SePay mode and pre-HMAC deployments).
+    """
+    secret = EnvKeys.SEPAY_WEBHOOK_SECRET
+    if not secret:
+        return True
+
+    provided_sig = request.headers.get("X-SePay-Signature", "")
+    provided_ts = request.headers.get("X-SePay-Timestamp", "")
+
+    if provided_sig or provided_ts:
+        # HMAC-SHA256 mode
+        if not provided_sig.startswith("sha256="):
+            return False
+        try:
+            ts = int(provided_ts)
+        except (TypeError, ValueError):
+            return False
+        if abs(int(time.time()) - ts) > _SEPAY_HMAC_TOLERANCE_SECONDS:
+            logger.warning("SePay IPN rejected: timestamp outside tolerance")
+            return False
+        expected = "sha256=" + hmac.new(
+            secret.encode(),
+            f"{ts}.".encode() + raw_body,
+            hashlib.sha256,
+        ).hexdigest()
+        return hmac.compare_digest(expected, provided_sig)
+
+    # API-Key / legacy static header mode
+    provided_key = request.headers.get("X-Secret-Key", "")
+    return bool(provided_key) and hmac.compare_digest(provided_key, secret)
 
 
 class LoginRateLimiter:
@@ -482,12 +535,12 @@ def create_admin_app(bot=None) -> Starlette:
 ] + export_routes
 
     async def sepay_ipn(request: Request) -> JSONResponse:
-        secret = request.headers.get("X-Secret-Key", "")
-        if EnvKeys.SEPAY_WEBHOOK_SECRET and secret != EnvKeys.SEPAY_WEBHOOK_SECRET:
+        raw_body = await request.body()
+        if not _verify_sepay_ipn_signature(request, raw_body):
             return JSONResponse({"success": False}, status_code=403)
 
         try:
-            payload = await request.json()
+            payload = json.loads(raw_body)
         except Exception:
             return JSONResponse({"success": False}, status_code=400)
 
