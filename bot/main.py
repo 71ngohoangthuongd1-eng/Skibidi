@@ -91,11 +91,12 @@ async def initialize_bot_runtime(dp: Dispatcher, bot: Bot) -> None:
     # Central chat-action (typing / upload_photo) signaling for every interactive
     # update. Registered for the update types a user can trigger; non-interactive
     # endpoints (/sepay/ipn, cron, health, admin) never reach the dispatcher.
+    # NOTE: successful_payment arrives as a Message object and flows through
+    # dp.message below, so it needs no separate registration here.
     chat_action_middleware = ChatActionMiddleware()
     dp.message.middleware(chat_action_middleware)
     dp.callback_query.middleware(chat_action_middleware)
     dp.pre_checkout_query.middleware(chat_action_middleware)
-    dp.successful_payment.middleware(chat_action_middleware)
 
     locale_middleware = LocaleMiddleware()
     dp.message.middleware(locale_middleware)
