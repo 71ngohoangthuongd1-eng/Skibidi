@@ -152,3 +152,6 @@ logs/*
 !logs/.gitkeep
 *.db
 *.db-journal
+
+.vercel
+.env*

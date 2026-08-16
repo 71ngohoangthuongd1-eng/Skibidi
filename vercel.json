@@ -5,9 +5,6 @@
       "excludeFiles": "{data/**,logs/**,assets/**,.git/**,__pycache__/**,**/__pycache__/**,migrations/**,scripts/**}"
     }
   },
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index" }
-  ],
   "crons": [
     {
       "path": "/api/cron/cleanup",
