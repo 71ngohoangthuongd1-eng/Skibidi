@@ -18,6 +18,7 @@ from bot.logger_mesh import configure_logging
 from bot.middleware import setup_rate_limiting, RateLimitConfig
 from bot.middleware.security import SecurityMiddleware, AuthenticationMiddleware
 from bot.middleware.locale import LocaleMiddleware
+from bot.middleware.chat_action import ChatActionMiddleware
 from bot.misc.caching import init_cache_manager, get_cache_manager
 from bot.misc.caching import CacheScheduler
 from bot.misc.caching import get_redis_storage
@@ -86,6 +87,15 @@ async def initialize_bot_runtime(dp: Dispatcher, bot: Bot) -> None:
 
     dp.message.middleware(security_middleware)
     dp.callback_query.middleware(security_middleware)
+
+    # Central chat-action (typing / upload_photo) signaling for every interactive
+    # update. Registered for the update types a user can trigger; non-interactive
+    # endpoints (/sepay/ipn, cron, health, admin) never reach the dispatcher.
+    chat_action_middleware = ChatActionMiddleware()
+    dp.message.middleware(chat_action_middleware)
+    dp.callback_query.middleware(chat_action_middleware)
+    dp.pre_checkout_query.middleware(chat_action_middleware)
+    dp.successful_payment.middleware(chat_action_middleware)
 
     locale_middleware = LocaleMiddleware()
     dp.message.middleware(locale_middleware)

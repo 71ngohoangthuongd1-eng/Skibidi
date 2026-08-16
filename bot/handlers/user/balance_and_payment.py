@@ -7,7 +7,6 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message, PreCheckoutQuery, SuccessfulPayment, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.enums.chat_type import ChatType
-from aiogram.enums import ChatAction
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from sqlalchemy import select, update
 
@@ -29,7 +28,7 @@ from bot.handlers.other import _any_payment_method_enabled, is_safe_item_name
 from bot.misc.metrics import get_metrics
 from bot.misc.services import CryptoPayAPI, CryptoPayAPIError, send_stars_invoice, send_fiat_invoice, \
     is_sepay_configured, convert_balance_amount_to_vnd, build_sepay_transfer_content, \
-    build_vietqr_url, fetch_qr_image, send_chat_action
+    build_vietqr_url, fetch_qr_image
 from bot.misc.services.payment import _minor_units_for
 from bot.filters import ValidAmountFilter
 from bot.i18n import localize, localize_for
@@ -719,14 +718,12 @@ async def buy_direct_sepay_callback_handler(call: CallbackQuery, state: FSMConte
     }
 
     # Acknowledge now so Telegram stops the loading spinner before the
-    # potentially slower VietQR fetch / photo upload below.
+    # potentially slower VietQR fetch / photo upload below. (The upload_photo
+    # chat action is signalled centrally by ChatActionMiddleware.)
     await call.answer()
 
     amount_vnd = int(context["amount_vnd"])
     transfer_content = context["transfer_content"]
-
-    # Signal "uploading a photo" while we build + fetch the QR image.
-    await send_chat_action(call.bot, call.message.chat.id, ChatAction.UPLOAD_PHOTO)
 
     qr_bytes = None
     try:
